@@ -1247,4 +1247,3 @@ Key improvements from previous version:
 6. Alignment with code examples in guide
 7. Cross-linking between diagrams and related sections
 
-Note: Mermaid diagrams require a compatible Markdown viewer (like GitHub, GitBook, or VS Code with Mermaid extension) to render properly. For plain text environments, include the diagram code blocks with "```mermaid" syntax as shown.
