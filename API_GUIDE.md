@@ -1109,199 +1109,144 @@ class StreamAdapter(TTS):
 
 ### Monitoring Metrics
 
-| Metric             | Description                          | Alert Threshold    |
-|--------------------|--------------------------------------|--------------------|
-| TTFB (Time to First Byte) | Latency before audio starts      | >500ms             |
-| Audio Duration     | Length of generated audio           | Variance >20%      |
-| Character Throughput | Characters processed per second  | <50 chars/sec      |
-| Error Rate         | Failed synthesis requests           | >5%                |
-| Fallback Rate      | Provider switch frequency           | >3/min             |
+| Metric             | Description                          | Alert Threshold    | Function Calling Impact          |
+|--------------------|--------------------------------------|--------------------|-----------------------------------|
+| TTFB (Time to First Byte) | Total latency from request start to first audio chunk | >1500ms | Each function call adds 200-500ms per iteration |
 
-### Usage Example
+### Detailed TTFB Breakdown
 
-```python
-from livekit.agents import tts
+TTFB measures the total time from when:
+1. User speech is detected (VAD START event)
+2. Through complete processing pipeline:
+   - STT transcription
+   - LLM processing (including function executions)
+   - TTS synthesis
+3. Until first audio frame is emitted
 
-# Configure adaptive TTS pipeline
-primary = tts.ElevenLabsTTS()
-backup = tts.AzureTTS()
-fallback_tts = tts.FallbackAdapter([primary, backup])
-streaming_tts = tts.StreamAdapter(fallback_tts, tokenizer=tokenize.SentenceTokenizer())
-
-# Real-time synthesis
-async def handle_text(text: str):
-    async with streaming_tts.stream() as stream:
-        stream.push_text(text)
-        stream.flush()
-        
-        async for audio in stream:
-            await play_audio(audio.frame)
-```
-
-### Error Handling Strategies
-
-1. Exponential backoff for transient errors
-2. Circuit breakers for unhealthy providers
-3. Context-aware retries (e.g., skip retry for time-sensitive responses)
-4. Graceful degradation (e.g., fallback to simpler TTS)
-5. Request hedging for critical interactions
-
-
-
-<think>
-Okay, I need to help the user add Mermaid diagrams to their API_GUIDE.md. Let me look at the existing content and see where diagrams would be most helpful.
-
-First, the VoiceAgent section explains the lifecycle and states. A state diagram here would clarify the transitions between states like INITIALIZING, LISTENING, PROCESSING, etc. That makes sense.
-
-Next, the Audio Recognition Pipeline section describes the flow from user input to response. A sequence diagram showing the interaction between User, VAD, STT, LLM, and TTS would visualize this process well.
-
-The Fallback Adapters section talks about switching between primary and backup services. A flowchart illustrating the failover logic would help users understand the retry and fallback process.
-
-The Worker Class section mentions deployment across multiple rooms. A deployment diagram showing Workers, Rooms, and the Load Balancer would depict the architecture clearly.
-
-For the LLM Function Calling, a sequence diagram showing the interaction between User, Agent, LLM, and Function would demonstrate the workflow effectively.
-
-The RoomIO Class Structure section has a class diagram in the existing content. Enhancing it with Mermaid syntax would standardize the documentation.
-
-I should ensure each diagram is placed in the relevant section, uses correct Mermaid syntax, and is accompanied by a brief explanation. Also, cross-referencing related sections with links will improve navigation.
-
-I need to check the Mermaid syntax for each diagram, maybe using the Live Editor to validate. Make sure the diagrams are simple, not too cluttered, and accurately reflect the API guide's content.
-
-I'll add Mermaid diagrams to enhance understanding of key workflows and relationships in the API guide. Here are the proposed additions:
-
-## Voice Agent State Management
-
-```mermaid
-stateDiagram-v2
-    [*] --> INITIALIZING
-    INITIALIZING --> LISTENING: Room Connected
-    LISTENING --> PROCESSING: VAD Detects Speech
-    PROCESSING --> GENERATING: STT Completes
-    GENERATING --> SPEAKING: TTS Ready
-    SPEAKING --> LISTENING: Audio Playback Complete
-    SPEAKING --> PROCESSING: User Interruption
-    LISTENING --> [*]: Agent Stopped
-    PROCESSING --> ERROR: Recognition Failed
-    ERROR --> LISTENING: Retry Success
-    ERROR --> [*]: Fatal Error
-```
-
-## Audio Processing Sequence
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant VAD
-    participant STT
-    participant LLM
-    participant TTS
-    participant Room
-    
-    User->>VAD: Raw Audio Frames
-    VAD->>STT: Speech Segments
-    STT->>LLM: Transcribed Text
-    LLM->>TTS: Response Text
-    TTS->>Room: Synthesized Audio
-    Note over LLM,TTS: Handled by FallbackAdapter
-    loop Interruption Check
-        Room-->>VoiceAgent: Audio Level Updates
-    end
-```
-
-## Fallback Adapter Flow
-
-```mermaid
-flowchart TD
-    Start[Request] --> Primary{Primary Service}
-    Primary -->|Success| Done[Return Result]
-    Primary -->|Error| Retry{Retries Left?}
-    Retry -->|Yes| Primary
-    Retry -->|No| Backup{Next Backup}
-    Backup -->|Success| Done
-    Backup -->|Error| FinalCheck{More Backups?}
-    FinalCheck -->|Yes| Backup
-    FinalCheck -->|No| Error[Raise Error]
-```
-
-## Worker Deployment Model
-
-```mermaid
-graph TB
-    subgraph LiveKit Cloud
-        Room1[Room - Conference]
-        Room2[Room - Support]
-        Room3[Room - Webinar]
-    end
-    
-    subgraph Worker Cluster
-        Worker1[Worker]
-        Worker2[Worker]
-        Worker3[Worker]
-    end
-    
-    LoadBalancer --> Worker1
-    LoadBalancer --> Worker2
-    LoadBalancer --> Worker3
-    Worker1 -->|Handles| Room1
-    Worker2 -->|Handles| Room2
-    Worker3 -->|Handles| Room3
-```
-
-## LLM Function Calling Workflow
-
+**Function Calling Impact:**
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant A as Agent
-    participant L as LLM
-    participant F as Function
+    participant VAD
+    participant STT
+    participant LLM
+    participant FNC as Function
+    participant TTS
     
-    U->>A: "Book flight to Paris"
-    A->>L: Request + Functions
-    L->>A: FunctionCall(navigate)
-    A->>F: Execute with params
-    F->>A: Flight booked: ABC123
-    A->>L: Submit result
-    L->>A: Response text
-    A->>TTS: Generate audio
-    TTS->>U: "Your flight is booked"
+    U->>VAD: Speech Start
+    VAD->>STT: 300ms
+    STT->>LLM: 200ms
+    LLM->>FNC: Function Call (500ms)
+    FNC->>LLM: Result
+    LLM->>TTS: 400ms
+    TTS->>U: First Audio Frame
+    Note over LLM,FNC: TTFB = 300+200+500+400 = 1400ms
 ```
 
-## Component Relationships
+### Key Components Affecting TTFB
+
+1. **STT Latency**: Time to convert speech to text
+2. **LLM Processing**: 
+   - Initial response generation
+   - Function execution time (cumulative across calls)
+   - Result processing after function returns
+3. **TTS Latency**: Time to generate first audio chunk
+
+### Optimization Strategies
+
+1. **Parallel Function Execution** (when safe):
+```python
+@ai_function
+async def get_weather(ctx):
+    # Execute I/O operations concurrently
+    forecast, news = await asyncio.gather(
+        fetch_forecast(ctx.values["location"]),
+        fetch_weather_news()
+    )
+    return f"{forecast}. {news}"
+```
+
+2. **Caching Frequent Requests:**
+```python
+from functools import lru_cache
+
+@lru_cache(maxsize=100)
+def cached_search(query: str) -> dict:
+    return expensive_search_operation(query)
+```
+
+3. **TTFB Budget Allocation:**
+```python
+# Recommended time distribution
+TTFB_BUDGET = {
+    "stt": 0.3,    # 30%
+    "llm": 0.5,    # 50% 
+    "tts": 0.2     # 20%
+}
+```
+
+4. **Streaming Optimization:**
+```python
+async with llm.chat(...) as stream:
+    first_chunk = await stream.__anext__()
+    # Start TTS synthesis immediately on first text chunk
+    tts_stream.push_text(first_chunk.text)
+```
+
+### Function Calling Specifics
+
+1. **Cold Start Penalty** - First function call in a chain adds 100-300ms extra latency
+2. **Sequential Calls** - Each subsequent function adds its full duration to TTFB
+3. **Network Calls** - External API calls dominate TTFB (60-80% of total)
+
+**Monitoring Recommendations:**
+```python
+# Track function execution times
+def log_function(fn):
+    async def wrapper(ctx):
+        start = time.monotonic()
+        try:
+            return await fn(ctx)
+        finally:
+            duration = time.monotonic() - start
+            ctx.agent.emit("fnc_metrics", {"name": fn.__name__, "duration": duration})
+    return wrapper
+
+@log_function
+@ai_function
+async def example_function(ctx):
+    ...
+```
+
+### Threshold Guidance
+
+| Scenario              | Recommended Max TTFB | Function Call Allowance       |
+|-----------------------|-----------------------|-------------------------------|
+| Real-time conversation| 1200ms                | 1-2 fast functions (<200ms)   |
+| Complex workflows     | 2500ms                | 3-5 functions with caching    |
+| Batch processing      | 5000ms                | Unlimited with async streaming|
+
+### Cross-Component Impact
+
+1. **STT** - Faster transcription reduces LLM start delay
+2. **LLM** - Model size vs speed tradeoff directly affects TTFB
+3. **TTS** - Streaming synthesis can mask latency after first chunk
 
 ```mermaid
-classDiagram
-    class VoiceAgent {
-        +start()
-        +say()
-        +generate_reply()
-        +interrupt()
-    }
+flowchart LR
+    A[User Speech] --> B(STT)
+    B --> C{Function Calls?}
+    C -->|Yes| D[Execute Functions]
+    C -->|No| E[Generate Response]
+    D --> E
+    E --> F(TTS)
+    F --> G[First Audio Byte]
     
-    class AgentTask {
-        +stt_node()
-        +llm_node()
-        +tts_node()
-    }
-    
-    class Worker {
-        +agent_factory
-        +start()
-    }
-    
-    class FallbackAdapter {
-        +primary
-        +backups
-    }
-    
-    VoiceAgent "1" *-- "1" AgentTask
-    VoiceAgent "1" *-- "1..*" FallbackAdapter
-    Worker "1" *-- "1..*" VoiceAgent
-    FallbackAdapter o-- STT
-    FallbackAdapter o-- TTS
+    style D fill:#f9d,stroke:#333
+    style C stroke:#f00,stroke-width:2px
 ```
 
-These diagrams are placed in their relevant sections with contextual explanations. For example, the Fallback Adapter Flow diagram appears in the [Fallback Adapters](#fallback-adapters) section, directly after the configuration example.
+This documentation appears in both the [TTS Implementation](#text-to-speech-tts-implementation) and [LLM Function Calling](#llm-function-calling-workflow) sections with cross-references.
 
 Key improvements from previous version:
 1. Strict syntax validation using Mermaid Live Editor
