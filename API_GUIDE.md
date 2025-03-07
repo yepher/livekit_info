@@ -1,5 +1,70 @@
 # Voice Agent API Guide
 
+## Table of Contents
+- [VoiceAgent Class](#voiceagent-class)
+  - [Initialization](#initialization)
+  - [Key Parameters](#key-parameters)
+  - [Detailed Explanation of max_fnc_steps](#detailed-explanation-of-max_fnc_steps)
+  - [Key Properties](#key-properties)
+  - [Main Methods](#main-methods)
+  - [Events](#events)
+  - [Usage Example](#usage-example)
+  
+- [AgentTask Class](#agenttask-class)
+  - [Initialization](#initialization-1)
+  - [Key Properties](#key-properties-1)
+  - [Pipeline Customization](#pipeline-customization-methods)
+
+- [InlineTask Class](#inlinetask-class)
+  - [Usage Example](#usage-example-1)
+
+- [Task Requirements](#task-requirements)
+
+- [Worker Class](#worker-class)
+  - [Initialization](#initialization-2)
+  - [Key Methods](#key-methods)
+  - [Events](#events-1)
+  - [Usage Example](#usage-example-2)
+  - [Worker Management Tips](#worker-management-tips)
+
+- [VAD (Voice Activity Detection)](#vad-voice-activity-detection)
+  - [Base Class](#base-class)
+  - [Detection Events](#detection-events)
+  - [Usage Example](#usage-example-3)
+  - [Configuration Tips](#configuration-tips)
+
+- [LLM (Language Model) Integration](#llm-language-model-integration)
+  - [Base Classes](#base-classes)
+  - [Function Execution Context](#function-execution-context)
+  - [Response Types](#response-types)
+  - [Best Practices](#best-practices)
+
+- [Chat Context Management](#chat-context-management)
+  - [Class Definition](#class-definition)
+  - [Message Types](#message-types)
+  - [Key Methods](#key-methods-1)
+
+- [Fallback Adapters](#fallback-adapters)
+  - [FallbackAdapter Class](#fallbackadapter-class)
+  - [Supported Services](#supported-services)
+  - [Configuration Tips](#configuration-tips-1)
+
+- [Audio Recognition Pipeline](#audio-recognition-pipeline)
+
+- [Speech-to-Text (STT) Implementation](#speech-to-text-stt-implementation)
+  - [Core STT Interface](#core-stt-interface)
+  - [Streaming Recognition](#streaming-recognition)
+
+- [Text-to-Speech (TTS) Implementation](#text-to-speech-tts-implementation)
+  - [Core TTS Interface](#core-tts-interface)
+  - [Streaming Implementation](#streaming-implementation)
+
+- [Performance Monitoring & Metrics](#performance-monitoring--metrics)
+  - [Core Metrics](#core-metrics)
+  - [Monitoring Best Practices](#monitoring-best-practices)
+
+API guide for [Agents 1.0](https://github.com/livekit/agents/tree/dev-1.0)
+
 ## VoiceAgent Class
 
 The main class for handling voice interactions in a LiveKit room.
