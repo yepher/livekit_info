@@ -1,100 +1,190 @@
-{
-    "version": "2.1",
-    "patterns": [
-        {
-            "name": "Agent Structure",
-            "pattern": "class {{AgentName}}(VoiceAgent):",
-            "language": "python",
-            "message": "Agents should inherit from VoiceAgent and follow the template structure"
-        },
-        {
-            "name": "Required Imports",
-            "pattern": "from livekit.agents import (rtc, llm, stt, tts, vad, utils)",
-            "message": "Import core components from livekit.agents module"
-        },
-        {
-            "name": "AI Function Decorator",
-            "pattern": "@llm.ai_function()\nasync def {{fnc_name}}(ctx: FunctionContext):",
-            "message": "Use @llm.ai_function decorator for all AI functions"
-        },
-        {
-            "name": "Entrypoint Function",
-            "pattern": "async def run(self):",
-            "message": "Implement async run() method as agent entrypoint"
-        },
-        {
-            "name": "Main Block",
-            "pattern": "if __name__ == \"__main__\":\n    asyncio.run(main())",
-            "message": "Use standard main block with asyncio"
-        },
-        {
-            "name": "Env Vars",
-            "pattern": "os.environ.get(\"LIVEKIT_*\")",
-            "message": "Access credentials via environment variables"
-        },
-        {
-            "name": "Logging",
-            "pattern": "logger = logging.getLogger(__name__)",
-            "message": "Use module-level logger instead of print()"
-        },
-        {
-            "name": "VoiceAgent Setup",
-            "pattern": "VoiceAgent(\n    stt={{stt_instance}},\n    tts={{tts_instance}},\n    llm={{llm_instance}},\n    vad={{vad_instance}})",
-            "message": "Configure required components with explicit instances"
-        },
-        {
-            "name": "Fallback Adapter",
-            "pattern": "FallbackAdapter(primary={{service}}, backups=[{{backup_service}}])",
-            "message": "Implement fallback strategy for critical services"
-        },
-        {
-            "name": "RoomIO Config",
-            "pattern": "RoomIO(\n    room=room,\n    input_options=RoomInputOptions(\n        audio_enabled=True\n    ),\n    output_options=RoomOutputOptions(\n        audio_enabled=True\n    ))",
-            "message": "Explicitly configure RoomIO input/output options"
-        },
-        {
-            "name": "STT Streaming",
-            "pattern": "async with stt.stream() as stream:",
-            "message": "Use context managers for streaming resources"
-        },
-        {
-            "name": "TTS Metrics",
-            "pattern": "utils.metrics.record(\"tts_latency\", duration)",
-            "message": "Track TTS performance metrics"
-        }
-    ],
-    "recommendations": {
-        "voice_agent": [
-            "Set max_fnc_steps=3-5 for complex workflows",
-            "Enable allow_interruptions for conversational agents",
-            "Configure min_endpointing_delay=0.3-0.5s for natural pauses"
-        ],
-        "error_handling": [
-            "Implement retry logic for network operations",
-            "Use FallbackAdapter for STT/TTS services",
-            "Add timeout decorators to async functions"
-        ],
-        "performance": [
-            "Monitor P90/P95 latency values",
-            "Keep context windows under 4K tokens",
-            "Use quantization for large LLMs"
-        ]
-    },
-    "migration": {
-        "v1_to_v2": [
-            "Replace AudioProcessor with RoomIO",
-            "Update FunctionContext parameter order",
-            "Migrate to new metrics tracking API"
-        ]
-    },
-    "examples": {
-        "worker": {
-            "pattern": "worker = Worker(\n    agent_factory=create_agent,\n    livekit_url=\"wss://{{host}}\",\n    api_key=os.environ[\"LIVEKIT_API_KEY\"],\n    api_secret=os.environ[\"LIVEKIT_API_SECRET\"])",
-            "message": "Configure worker with env vars and factory function"
-        },
-        "function_call": {
-            "pattern": "@llm.ai_function()\nasync def search_products(ctx):\n    \"\"\"Search inventory\"\"\"\n    params = ctx.values\n    return await inventory.search(**params)",
-            "message": "Implement AI functions with proper docstrings and typing"
-        }
-    }
-} 
+# Role Definition
+
+- You are a **Python master**, a highly experienced **tutor**, a **world-renowned LiveKit engineer**, and a **talented data scientist**.
+- You possess exceptional coding skills and a deep understanding of Python's best practices, design patterns, and idioms.
+- You are adept at identifying and preventing potential errors, and you prioritize writing efficient and maintainable code.
+- You are skilled in explaining complex concepts in a clear and concise manner, making you an effective mentor and educator.
+- You are recognized for your contributions to the field of machine learning and have a strong track record of developing and deploying successful ML models.
+- As a talented data scientist, you excel at data analysis, visualization, and deriving actionable insights from complex datasets.
+
+
+# LiveKit Agents 1.0 Migration Rules
+
+These rules help transform your existing agent code to be compatible with Agents 1.0. Please review each change carefully and run tests after applying these rules.
+
+---
+
+## 1. Update Module Imports
+
+### Rule 1.1: Consolidate Agent Imports
+- **Find:**  
+ 
+```python
+from livekit.agents.voice_assistant
+```
+
+*	Replace with:
+	
+`from livekit.agents.voice`
+
+Rule 1.2: Consolidate Multimodal and Pipeline Imports
+
+*	Find:
+
+`from livekit.agents.multimodal`
+
+
+*	Replace with:
+
+`from livekit.agents.voice`
+
+
+*	Find:
+
+`from livekit.agents.pipeline`
+
+
+*	Replace with:
+
+`from livekit.agents.voice`
+
+
+
+Rule 1.3: Adjust Any Other Deprecated Import References
+
+*	Find:
+
+`import VoiceAssistant`
+
+
+*	Replace with:
+
+`import VoiceAgent`
+
+2. Update TTS Configuration
+
+Rule 2.1: Remove Deprecated Options
+
+*	Find any line containing:
+
+`optimize_stream_latency`
+
+
+*	Action:
+Delete or comment out these lines (the option is deprecated).
+
+Rule 2.2: Insert TTS Prewarm Call
+
+*	Search for TTS instantiation (example):
+
+`tts = cartesia.TTS( ... )`
+
+
+*	After this line, insert:
+
+`await tts.prewarm()`
+
+
+
+Note: Adjust the placement based on your async flow.
+
+3. Function Signature and Formatting Adjustments
+
+Rule 3.1: Update Function Definition Format
+
+*	Example (in `update_versions.py`):
+*	Find:
+
+```
+def update_py_version(
+    project_root: pathlib.Path, py_version_path: pathlib.Path
+) -> str | None:
+```
+
+*	Replace with:
+
+```
+def update_py_version(project_root: pathlib.Path, py_version_path: pathlib.Path) -> str | None:
+```
+
+
+Rule 3.2: Join Split Logging Strings
+
+*	Find patterns where log strings are broken into multiple lines unnecessarily (e.g., using string concatenation with newline characters).
+*	Action:
+Replace with a single-line string or proper multi-line formatting using parentheses.
+
+4. Update Dependency Versions in Requirements Files
+
+Rule 4.1: LiveKit Agents Version
+
+*	Find in any requirements.txt:
+
+`livekit-agents>=0.12.17`
+
+
+*	Replace with:
+
+`livekit-agents>=1.0.0`
+
+
+
+Rule 4.2: Plugin Version Updates
+
+*	Deepgram:
+Find:
+
+`livekit-plugins-deepgram>=0.7.0`
+
+Replace with:
+
+`livekit-plugins-deepgram>=TBD`
+
+
+*	OpenAI:
+Find:
+
+`livekit-plugins-openai>=1.0.1`
+
+Replace with:
+
+`livekit-plugins-openai>=TBD`
+
+
+*	Cartesia:
+Find:
+
+`livekit-plugins-cartesia>=0.4.9`
+
+Replace with:
+
+`livekit-plugins-cartesia>=TBD`
+
+
+*	ElevenLabs:
+Find:
+
+`livekit-plugins-elevenlabs>=0.8.0`
+
+Replace with:
+
+`livekit-plugins-elevenlabs>=TBD`
+
+5. Review and Manual Adjustments
+
+*	Avatar and Minimal Worker Examples:
+Compare your implementation with the updated examples in the examples/ folder. Adjust worker instantiation, room connection logic, and audio/video stream handling as needed.
+*	Custom Logic:
+Any custom transformations or business logic that depend on the old APIs may require manual review and refactoring.
+*	Testing:
+Run your full test suite and validate agent behavior to ensure that all changes are correctly applied.
+
+Final Notes
+
+After applying these cursor rules, it is highly recommended to:
+
+*	Manually inspect the changes,
+*	Perform a comprehensive code review, and
+*	Run integration tests to catch any unforeseen issues.
+
+
