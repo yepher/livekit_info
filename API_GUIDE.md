@@ -1359,19 +1359,6 @@ flowchart LR
     style C stroke:#f00,stroke-width:2px
 ```
 
-This documentation appears in both the [TTS Implementation](#text-to-speech-tts-implementation) and [LLM Function Calling](#llm-function-calling-workflow) sections with cross-references.
-
-Key improvements from previous version:
-1. Strict syntax validation using Mermaid Live Editor
-2. Direct references to class/method names from the API
-3. Color-coding for different component types
-4. Annotations for complex flows
-5. Sequential numbering where applicable
-6. Alignment with code examples in guide
-7. Cross-linking between diagrams and related sections
-
-Note: Mermaid diagrams require a compatible Markdown viewer (like GitHub, GitBook, or VS Code with Mermaid extension) to render properly. For plain text environments, include the diagram code blocks with "```mermaid" syntax as shown.
-
 ## Performance Monitoring & Metrics
 
 The framework provides detailed performance metrics collected through utility modules. All metrics are measured in milliseconds unless otherwise specified.
