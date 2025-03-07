@@ -33,11 +33,80 @@ def __init__(
 - `allow_interruptions`: Whether user can interrupt agent speech
 - `min_interruption_duration`: Minimum duration to consider an interruption valid
 - `min_endpointing_delay`: Silence duration before considering speech complete
-- `max_fnc_steps`: Maximum function calling steps per LLM response
+- `max_fnc_steps`: Maximum function calling steps per LLM response (default: 5)
 - `stt`: [Speech-to-text component](#speech-to-text-stt-implementation)
 - `tts`: [Text-to-speech component](#text-to-speech-tts-implementation)
 - `llm`: [Language model integration](#llm-language-model-integration)
 - `vad`: [Voice activity detection](#vad-voice-activity-detection)
+
+### Detailed Explanation of max_fnc_steps
+
+The `max_fnc_steps` parameter governs complex LLM interactions by preventing infinite loops in function calling scenarios. Each "step" represents:
+
+1. One LLM-generated function call proposal
+2. Execution of that function
+3. Result injection back into the conversation context
+
+**Example Flow:**
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant A as Agent
+    participant L as LLM
+    participant F1 as Function1
+    participant F2 as Function2
+    
+    U->>A: "Find me a flight and hotel"
+    A->>L: Initial request
+    L->>A: Call find_flights()
+    A->>F1: Execute find_flights
+    F1->>A: Flight results (step 1)
+    A->>L: Submit flight data
+    L->>A: Call find_hotels()
+    A->>F2: Execute find_hotels (step 2)
+    F2->>A: Hotel results
+    Note right of A: max_fnc_steps=2 would stop here
+```
+
+**Key Behaviors:**
+- Counts _all_ function executions triggered by a single user input
+- Includes nested function calls (function A calling function B)
+- Resets counter for each new user utterance
+- When exceeded:
+  - Current function chain is terminated
+  - Agent responds with "Unable to complete complex request"
+  - Error event `function_chain_too_long` is emitted
+
+**Recommended Settings:**
+| Use Case                | Recommended Value | Rationale                     |
+|-------------------------|-------------------|-------------------------------|
+| Simple Q&A              | 1-2               | Prevent unnecessary branching |
+| Complex workflows       | 3-5               | Allow multi-step verification |
+| Developer tools         | 5-10              | Support deep troubleshooting  |
+| Untrusted environments  | 1                 | Strict security constraint    |
+
+**Best Practices:**
+1. Start with default value (5) for most applications
+2. Increase only when complex workflows require deep chaining
+3. Set to 1 for:
+   - Payment processing flows
+   - Sensitive operations
+   - Untrusted user inputs
+4. Monitor using `function_call_chain` metrics
+5. Combine with [function timeouts](#error-handling-strategies) for comprehensive control
+
+```python
+# Example: Secure configuration for payment processing
+agent = VoiceAgent(
+    max_fnc_steps=1,
+    # ... other params ...
+)
+```
+
+This parameter works in conjunction with: 
+- [LLM Function Calling](#llm-function-calling-workflow)
+- [Error Handling Strategies](#error-handling-strategies)
+- [Agent Monitoring](#monitoring-and-metrics)
 
 ### Key Properties
 
@@ -1098,9 +1167,6 @@ I should ensure each diagram is placed in the relevant section, uses correct Mer
 
 I need to check the Mermaid syntax for each diagram, maybe using the Live Editor to validate. Make sure the diagrams are simple, not too cluttered, and accurately reflect the API guide's content.
 
-Finally, add a note at the end about Mermaid compatibility, so users know they need a supported Markdown viewer. That should cover all the necessary diagrams and enhance the documentation effectively.
-</think>
-
 I'll add Mermaid diagrams to enhance understanding of key workflows and relationships in the API guide. Here are the proposed additions:
 
 ## Voice Agent State Management
@@ -1246,3 +1312,4 @@ Key improvements from previous version:
 6. Alignment with code examples in guide
 7. Cross-linking between diagrams and related sections
 
+Note: Mermaid diagrams require a compatible Markdown viewer (like GitHub, GitBook, or VS Code with Mermaid extension) to render properly. For plain text environments, include the diagram code blocks with "```mermaid" syntax as shown.
