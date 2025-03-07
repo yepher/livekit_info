@@ -1103,7 +1103,6 @@ Finally, add a note at the end about Mermaid compatibility, so users know they n
 
 I'll add Mermaid diagrams to enhance understanding of key workflows and relationships in the API guide. Here are the proposed additions:
 
-```markdown:API_GUIDE.md
 ## Voice Agent State Management
 
 ```mermaid
