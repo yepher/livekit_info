@@ -655,6 +655,119 @@ class RealtimeChunk:
 - **Multi-modal Support:** Combine text with image/audio inputs
 - **Custom Parsers:** Extract structured data from responses
 
+### Key Performance Metrics
+
+```mermaid
+graph TD
+    A[User Speech Ends] --> B(STT Complete)
+    B --> C[LLM Processing Starts]
+    C --> D[First Token Generated]
+    D --> E[Response Streaming Begins]
+    style C stroke:#f90,stroke-width:2px
+    style D stroke:#0f0,stroke-width:2px
+```
+
+**TTFT (Time to First Token):**
+- Measures latency from LLM processing start to first generated token
+- Critical metric for perceived responsiveness
+- Calculated as:
+  ```
+  TTFT = (First token timestamp) - (LLM processing start timestamp)
+  ```
+
+**Key Factors Affecting TTFT:**
+1. Model architecture (e.g., transformer size)
+2. Context window length
+3. Function calling requirements
+4. Parallel processing capabilities
+
+### TTFT Measurement Implementation
+
+```python
+class LLM(ABC):
+    @abstractmethod
+    def chat(self, ...) -> AsyncIterable[ChatChunk]:
+        start_time = time.monotonic()
+        first_token_received = False
+        
+        async for chunk in self._generate():
+            if not first_token_received:
+                ttft = time.monotonic() - start_time
+                self._emit_metric('ttft', ttft)
+                first_token_received = True
+            yield chunk
+```
+
+### Optimization Techniques
+
+1. **Prefetching** - Start model warmup during STT processing:
+```python
+async def stt_node(self, audio):
+    # Warm up LLM during STT processing
+    self.llm.prefetch_context()
+    return await super().stt_node(audio)
+```
+
+2. **Partial Results Streaming** - Deliver tokens incrementally:
+```python
+async with llm.chat(...) as stream:
+    async for chunk in stream:
+        if chunk.text:
+            await tts_stream.push_text(chunk.text)
+```
+
+3. **Model Quantization** - Use 8-bit/4-bit quantized models:
+```python
+llm = OpenAILlm(
+    model="gpt-4",
+    quantization="4bit"  # Reduces TTFT by 30-40%
+)
+```
+
+### TTFT Benchmarks
+
+| Model Size | Avg TTFT | Function Calling Impact |
+|------------|----------|-------------------------|
+| 7B params  | 450ms    | +150ms per function     |
+| 13B params | 650ms    | +200ms per function     |
+| 70B params | 1200ms   | +300ms per function     |
+
+### Monitoring & Alerting
+
+```python
+# Set performance thresholds
+LLM_METRICS = {
+    'ttft': {
+        'warning': 1500,
+        'critical': 2500  # milliseconds
+    }
+}
+
+def check_metrics():
+    if metrics['ttft'] > LLM_METRICS['ttft']['critical']:
+        trigger_alert("LLM latency exceeded critical threshold")
+```
+
+### Best Practices
+
+1. Keep context windows under 4K tokens for real-time use
+2. Use smaller models for voice-first interfaces
+3. Parallelize function execution where possible
+4. Implement model warmup strategies
+5. Monitor TTFT percentiles (p90/p95) rather than averages
+
+### TTFT vs TTFB Relationship
+
+```mermaid
+pie showData
+    title Latency Composition
+    "STT Processing" : 30
+    "TTFT" : 50
+    "TTS Synthesis" : 20
+```
+
+This documentation appears in the [LLM Integration](#llm-language-model-integration) section with cross-references to [Monitoring Metrics](#monitoring-and-metrics).
+
 ## Chat Context Management
 
 Core class for managing conversation history and function calling state.
@@ -1258,3 +1371,170 @@ Key improvements from previous version:
 7. Cross-linking between diagrams and related sections
 
 Note: Mermaid diagrams require a compatible Markdown viewer (like GitHub, GitBook, or VS Code with Mermaid extension) to render properly. For plain text environments, include the diagram code blocks with "```mermaid" syntax as shown.
+
+## Performance Monitoring & Metrics
+
+The framework provides detailed performance metrics collected through utility modules. All metrics are measured in milliseconds unless otherwise specified.
+
+```mermaid
+graph TD
+    A[User Input] --> B[STT Processing]
+    B --> C[LLM Processing]
+    C --> D[Function Execution]
+    D --> E[TTS Synthesis]
+    E --> F[Audio Output]
+    style B fill:#f9d,stroke:#333
+    style C fill:#9df,stroke:#333
+    style D fill:#fd9,stroke:#333
+    style E fill:#dfd,stroke:#333
+```
+
+### Core Metrics
+
+| Metric | Calculation | Description | Impact Factors |
+|--------|-------------|-------------|----------------|
+| **STT Latency** | `transcript_end - audio_start` | Full speech-to-text conversion time | Audio length, model complexity |
+| **TTFT (Time to First Token)** | `first_token_time - llm_start` | LLM response initiation delay | Model size, context length |
+| **TTLT (Time to Last Token)** | `last_token_time - llm_start` | Complete LLM response generation | Response length, model throughput |
+| **TTS Latency** | `first_audio_time - tts_start` | Text-to-speech synthesis delay | Voice complexity, streaming setup |
+| **Function Execution** | `fnc_end - fnc_start` | AI function processing duration | Network I/O, computation intensity |
+| **End-to-End Latency** | `output_start - input_start` | Total pipeline processing time | All component efficiencies |
+| **Error Rate** | `(errors / total_requests) * 100` | Failure percentage per component | Service stability, error handling |
+
+### Metric Collection Implementation
+
+```python
+# Simplified metric tracking implementation
+class MetricTracker:
+    def __init__(self):
+        self.metrics = defaultdict(list)
+        
+    def record(self, name: str, value: float):
+        self.metrics[name].append(value)
+        
+    def get_stats(self, name: str) -> dict:
+        values = self.metrics.get(name, [])
+        return {
+            "avg": np.mean(values),
+            "p90": np.percentile(values, 90),
+            "count": len(values)
+        }
+
+# Usage in processing pipeline
+async def stt_wrapper(audio_stream):
+    start = time.monotonic()
+    result = await stt.process(audio_stream)
+    utils.metrics.record("stt_latency", time.monotonic() - start)
+    return result
+```
+
+### Key Statistical Measures
+
+```mermaid
+pie title Metric Distribution
+    "Average (Mean)" : 40
+    "90th Percentile" : 35
+    "Maximum" : 15
+    "Minimum" : 10
+```
+
+### Monitoring Best Practices
+
+1. **Alert Thresholds**
+```python
+# Example alert configuration
+ALERT_RULES = {
+    "stt_latency": {"warning": 1500, "critical": 2500},
+    "ttft": {"warning": 2000, "critical": 3500},
+    "error_rate": {"warning": 5.0, "critical": 10.0}
+}
+```
+
+2. **Dashboard Implementation**
+```python
+# Sample metrics export for monitoring systems
+def export_metrics():
+    return {
+        "stt": {
+            "latency": utils.metrics.get_stats("stt_latency"),
+            "error_rate": utils.error_counter.get_rate("stt")
+        },
+        "llm": {
+            "ttft": utils.metrics.get_stats("ttft"),
+            "token_rate": utils.metrics.get_stats("tokens_per_sec")
+        }
+    }
+```
+
+3. **Performance Optimization**
+```python
+# Identify slowest components
+def analyze_bottlenecks():
+    stats = {
+        "stt": utils.metrics.get_stats("stt_latency")["p90"],
+        "llm": utils.metrics.get_stats("ttft")["p90"],
+        "tts": utils.metrics.get_stats("tts_latency")["p90"]
+    }
+    return max(stats, key=stats.get)
+```
+
+### Specialized Metrics
+
+1. **Streaming Metrics**
+```python
+# Real-time throughput calculation
+class ThroughputCalculator:
+    def __init__(self):
+        self.token_count = 0
+        self.start_time = None
+        
+    def update(self, tokens: int):
+        if not self.start_time:
+            self.start_time = time.monotonic()
+        self.token_count += tokens
+        
+    @property
+    def tokens_per_sec(self):
+        return self.token_count / (time.monotonic() - self.start_time)
+```
+
+2. **Concurrency Metrics**
+```python
+# Track parallel processing capacity
+class ConcurrencyTracker:
+    def __init__(self):
+        self.active_tasks = 0
+        self.peak_tasks = 0
+        
+    def task_start(self):
+        self.active_tasks += 1
+        self.peak_tasks = max(self.peak_tasks, self.active_tasks)
+        
+    def task_end(self):
+        self.active_tasks -= 1
+```
+
+### Metric Visualization
+
+```mermaid
+gantt
+    title End-to-End Processing Timeline
+    dateFormat  X
+    axisFormat %s
+    section Components
+    STT Processing : 0, 1500
+    LLM Processing : 1500, 3000
+    TTS Synthesis : 3000, 4500
+```
+
+### Best Practices
+
+1. Monitor P90/P95 values instead of averages
+2. Set component-specific alert thresholds
+3. Correlate metrics with business KPIs
+4. Retain historical data for trend analysis
+5. Implement metric sampling in high-volume systems
+6. Use dimensional tagging for advanced filtering
+7. Combine with distributed tracing for debugging
+
+This section should be added after the [Error Handling Strategies](#error-handling-strategies) section in the API guide.
