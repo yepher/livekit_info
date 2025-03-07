@@ -1,217 +1,100 @@
 {
-    "rules": [
+    "version": "2.1",
+    "patterns": [
         {
             "name": "Agent Structure",
-            "pattern": "class {name}(AgentTask):",
-            "description": "All agents should inherit from AgentTask and follow the standard structure",
-            "examples": [
-                "class MyTask(AgentTask):",
-                "    def __init__(self) -> None:",
-                "        super().__init__(",
-                "            instructions=\"Your agent instructions here\",",
-                "            # Optional: Configure components",
-                "            # stt=deepgram.STT(),",
-                "            # llm=openai.LLM(),",
-                "            # tts=cartesia.TTS(),",
-                "        )"
-            ]
+            "pattern": "class {{AgentName}}(VoiceAgent):",
+            "language": "python",
+            "message": "Agents should inherit from VoiceAgent and follow the template structure"
         },
         {
             "name": "Required Imports",
-            "pattern": "from livekit.agents import JobContext, WorkerOptions, cli",
-            "description": "Every agent file should include these core imports",
-            "examples": [
-                "from livekit.agents import JobContext, WorkerOptions, cli",
-                "from livekit.agents.llm import ai_function",
-                "from livekit.agents.voice import AgentTask, CallContext, VoiceAgent",
-                "from livekit.plugins import cartesia, deepgram, openai, silero"
-            ]
+            "pattern": "from livekit.agents import (rtc, llm, stt, tts, vad, utils)",
+            "message": "Import core components from livekit.agents module"
         },
         {
             "name": "AI Function Decorator",
-            "pattern": "@ai_function",
-            "description": "Use the ai_function decorator for AI-powered methods",
-            "examples": [
-                "@ai_function",
-                "async def my_ai_function(self, context: CallContext):",
-                "    await self.agent.say(\"Processing your request...\")",
-                "    return self, \"Task completed\""
-            ]
+            "pattern": "@llm.ai_function()\nasync def {{fnc_name}}(ctx: FunctionContext):",
+            "message": "Use @llm.ai_function decorator for all AI functions"
         },
         {
             "name": "Entrypoint Function",
-            "pattern": "async def entrypoint(ctx: JobContext):",
-            "description": "Every agent needs an entrypoint function that takes a JobContext",
-            "examples": [
-                "async def entrypoint(ctx: JobContext):",
-                "    await ctx.connect()",
-                "    agent = VoiceAgent(",
-                "        task=MyTask(),",
-                "    )",
-                "    await agent.start(room=ctx.room)"
-            ]
+            "pattern": "async def run(self):",
+            "message": "Implement async run() method as agent entrypoint"
         },
         {
             "name": "Main Block",
-            "pattern": "if __name__ == \"__main__\":",
-            "description": "Include the standard main block for running the agent",
-            "examples": [
-                "if __name__ == \"__main__\":",
-                "    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))"
-            ]
+            "pattern": "if __name__ == \"__main__\":\n    asyncio.run(main())",
+            "message": "Use standard main block with asyncio"
         },
         {
-            "name": "Environment Variables",
-            "pattern": "from dotenv import load_dotenv",
-            "description": "Include dotenv for environment variable management",
-            "examples": [
-                "from dotenv import load_dotenv",
-                "load_dotenv()"
-            ]
+            "name": "Env Vars",
+            "pattern": "os.environ.get(\"LIVEKIT_*\")",
+            "message": "Access credentials via environment variables"
         },
         {
-            "name": "Logging Setup",
-            "pattern": "import logging",
-            "description": "Include proper logging setup for the agent",
-            "examples": [
-                "import logging",
-                "logger = logging.getLogger(\"my-agent\")",
-                "logger.setLevel(logging.INFO)"
-            ]
+            "name": "Logging",
+            "pattern": "logger = logging.getLogger(__name__)",
+            "message": "Use module-level logger instead of print()"
         },
         {
-            "name": "Voice Agent Setup",
-            "pattern": "VoiceAgent(",
-            "description": "For voice agents, use the VoiceAgent class with task parameter",
-            "examples": [
-                "agent = VoiceAgent(",
-                "    task=MyTask(),",
-                ")"
-            ]
+            "name": "VoiceAgent Setup",
+            "pattern": "VoiceAgent(\n    stt={{stt_instance}},\n    tts={{tts_instance}},\n    llm={{llm_instance}},\n    vad={{vad_instance}})",
+            "message": "Configure required components with explicit instances"
         },
         {
-            "name": "Task Transfer",
-            "pattern": "return NewTask(), \"Transfer message\"",
-            "description": "Use return statement with new task and message for task transfers",
-            "examples": [
-                "@ai_function",
-                "async def transfer_to_new_task(self, context: CallContext):",
-                "    return NewTask(), \"Transferring you to new task...\""
-            ]
+            "name": "Fallback Adapter",
+            "pattern": "FallbackAdapter(primary={{service}}, backups=[{{backup_service}}])",
+            "message": "Implement fallback strategy for critical services"
         },
         {
-            "name": "RoomIO Configuration",
-            "pattern": "room_io.RoomIO(",
-            "description": "Configure room input/output management",
-            "examples": [
-                "room_io = RoomIO(",
-                "    room=room,",
-                "    agent=agent,",
-                "    input_options=RoomInputOptions(",
-                "        audio_enabled=True,",
-                "        participant_filter=lambda p: p.name == 'customer'",
-                "    ),",
-                "    output_options=RoomOutputOptions(",
-                "        publish_source='agent-tts'",
-                "    )",
-                ")"
-            ]
-        },
-        {
-            "name": "Fallback Adapter Setup",
-            "pattern": "FallbackAdapter(",
-            "description": "Configure service fallback strategy",
-            "examples": [
-                "tts = FallbackAdapter(",
-                "    [ElevenLabsTTS(), AzureTTS()],",
-                "    attempt_timeout=10.0,",
-                "    max_retries=1",
-                ")"
-            ]
+            "name": "RoomIO Config",
+            "pattern": "RoomIO(\n    room=room,\n    input_options=RoomInputOptions(\n        audio_enabled=True\n    ),\n    output_options=RoomOutputOptions(\n        audio_enabled=True\n    ))",
+            "message": "Explicitly configure RoomIO input/output options"
         },
         {
             "name": "STT Streaming",
             "pattern": "async with stt.stream() as stream:",
-            "description": "Handle streaming speech recognition",
-            "examples": [
-                "async with stt.stream(language='en-US') as stream:",
-                "    async for frame in audio_input:",
-                "        stream.push_frame(frame)",
-                "    await stream.flush()"
-            ]
+            "message": "Use context managers for streaming resources"
         },
         {
             "name": "TTS Metrics",
-            "pattern": "@tts.on('metrics_collected')",
-            "description": "Handle TTS performance metrics",
-            "examples": [
-                "@tts.on('metrics_collected')",
-                "def handle_metrics(metrics: TTSMetrics):",
-                "    logger.info(f'TTFB: {metrics.ttfb}ms')"
-            ]
+            "pattern": "utils.metrics.record(\"tts_latency\", duration)",
+            "message": "Track TTS performance metrics"
         }
     ],
-    "filePatterns": {
-        "agent": "*.py",
-        "config": "*.env",
-        "requirements": "requirements.txt"
+    "recommendations": {
+        "voice_agent": [
+            "Set max_fnc_steps=3-5 for complex workflows",
+            "Enable allow_interruptions for conversational agents",
+            "Configure min_endpointing_delay=0.3-0.5s for natural pauses"
+        ],
+        "error_handling": [
+            "Implement retry logic for network operations",
+            "Use FallbackAdapter for STT/TTS services",
+            "Add timeout decorators to async functions"
+        ],
+        "performance": [
+            "Monitor P90/P95 latency values",
+            "Keep context windows under 4K tokens",
+            "Use quantization for large LLMs"
+        ]
     },
-    "migrationGuide": {
-        "pre1.0": {
-            "description": "Key changes for migrating pre-1.0 agents to 1.0",
-            "changes": [
-                {
-                    "name": "Agent Initialization",
-                    "old": "VoiceAgent(instructions=\"...\", stt=..., llm=..., tts=...)",
-                    "new": "VoiceAgent(task=MyTask())",
-                    "description": "Move component configuration to AgentTask class"
-                },
-                {
-                    "name": "AI Functions",
-                    "old": "@ai_function()\ndef my_function():",
-                    "new": "@ai_function\nasync def my_function(self, context: CallContext):",
-                    "description": "AI functions now take self and CallContext, should be async, and decorator doesn't need parentheses"
-                },
-                {
-                    "name": "Task Transfer",
-                    "old": "self.agent.transfer_to(NewTask())",
-                    "new": "return NewTask(), \"Transfer message\"",
-                    "description": "Use return statement for task transfers"
-                },
-                {
-                    "name": "Component Configuration",
-                    "old": "VoiceAgent(stt=..., llm=..., tts=...)",
-                    "new": "class MyTask(AgentTask):\n    def __init__(self):\n        super().__init__(instructions=\"...\", stt=..., llm=..., tts=...)",
-                    "description": "Move component configuration to AgentTask class"
-                },
-                {
-                    "name": "Room Management",
-                    "old": "Manual track subscription",
-                    "new": "Use RoomIO class",
-                    "description": "RoomIO handles automatic track management"
-                },
-                {
-                    "name": "Fallback Handling", 
-                    "old": "Custom retry logic",
-                    "new": "Use FallbackAdapter",
-                    "description": "Standardized fallback implementation"
-                }
-            ]
+    "migration": {
+        "v1_to_v2": [
+            "Replace AudioProcessor with RoomIO",
+            "Update FunctionContext parameter order",
+            "Migrate to new metrics tracking API"
+        ]
+    },
+    "examples": {
+        "worker": {
+            "pattern": "worker = Worker(\n    agent_factory=create_agent,\n    livekit_url=\"wss://{{host}}\",\n    api_key=os.environ[\"LIVEKIT_API_KEY\"],\n    api_secret=os.environ[\"LIVEKIT_API_SECRET\"])",
+            "message": "Configure worker with env vars and factory function"
+        },
+        "function_call": {
+            "pattern": "@llm.ai_function()\nasync def search_products(ctx):\n    \"\"\"Search inventory\"\"\"\n    params = ctx.values\n    return await inventory.search(**params)",
+            "message": "Implement AI functions with proper docstrings and typing"
         }
-    },
-    "recommendations": [
-        "Always include proper error handling in agent methods",
-        "Use async/await for all I/O operations",
-        "Include docstrings for all public methods",
-        "Follow the project's existing code style (ruff.toml)",
-        "Include type hints for all function parameters and return values",
-        "Use CallContext parameter in AI functions for access to conversation context",
-        "Implement task transfers using return statements with new task and message",
-        "Use self parameter in AI functions for access to agent instance",
-        "Use FallbackAdapter for critical STT/TTS services in production",
-        "Configure RoomIO options for proper track permissions",
-        "Monitor TTS/STT metrics for performance insights",
-        "Validate audio sample rates match component requirements",
-        "Use sentence tokenization with non-streaming TTS"
-    ]
+    }
 } 
