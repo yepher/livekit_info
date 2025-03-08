@@ -1,3 +1,11 @@
+**TODO**
+
+* when agents 1.0 is released replace `/blob/dev-1.0/` with `/blob/main/`
+* document avatar
+* Add best practices (ie least network latency to major 3rd party components)
+* Add SIP info
+* add EOUMetrics[`transcription_delay`, `end_of_utterance_delay`]
+
 # Voice Agent API Guide
 
 API guide for [Agents 1.0](https://github.com/livekit/agents/tree/dev-1.0)
@@ -77,7 +85,8 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
   - [Monitoring Best Practices](#monitoring-best-practices)
 
 
-## VoiceAgent Class
+## VoiceAgent Class 
+[source code](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/voice/voice_agent.py)
 
 The main class for handling voice interactions in a LiveKit room.
 
@@ -96,8 +105,8 @@ def __init__(
     tts: NotGivenOr[tts.TTS] = NOT_GIVEN,
     userdata: NotGivenOr[Userdata_T] = NOT_GIVEN,
     allow_interruptions: bool = True,
-    min_interruption_duration: float = 0.5,
-    min_endpointing_delay: float = 0.5,
+    min_interruption_duration: float = 0.5, # seconds
+    min_endpointing_delay: float = 0.5, # seconds
     max_fnc_steps: int = 5,
     loop: asyncio.AbstractEventLoop | None = None,
 ) -> None
@@ -284,6 +293,10 @@ async def main():
 
 ## Voice Agent Events Guide
 
+[source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/voice/events.py)
+
+Voice Agent Events form a real-time notification system that enables developers to build responsive voice applications. These events occur throughout the interaction lifecycle as illustrated in the foloowing Event Flow Diagram.
+
 ### Event Flow Diagram
 
 ```mermaid
@@ -327,62 +340,115 @@ Key Observations:
 ### Event Types
 
 #### user_started_speaking
-Emitted when user begins speaking
+Triggered when the agent detects speech from the user
 ```python
-class UserStartedSpeakingEvent(BaseModel):
-    type: Literal["user_started_speaking"] = "user_started_speaking"
+# Example: Log when user starts speaking
+agent.on("user_started_speaking", lambda _: 
+    logger.info("User began speaking - activating noise cancellation"))
+
+# Example: Show visual indicator
+agent.on("user_started_speaking", lambda _:
+    ui.show_indicator("user_speaking"))
 ```
 
 #### user_stopped_speaking
-Emitted when user stops speaking
+Received when user speech segment ends
 ```python
-class UserStoppedSpeakingEvent(BaseModel):
-    type: Literal["user_stopped_speaking"] = "user_stopped_speaking"
+# Example: Start processing audio
+agent.on("user_stopped_speaking", lambda _:
+    agent.process_current_audio())
+
+# Example: Update UI state
+agent.on("user_stopped_speaking", lambda _:
+    ui.update_state(listening=False))
 ```
 
 #### user_input_transcribed
-Emitted when user speech is transcribed
+Contains finalized or interim transcriptions
 ```python
-class UserInputTranscribedEvent(BaseModel):
-    type: Literal["user_input_transcribed"] = "user_input_transcribed"
-    transcript: str  # Transcribed text
-    is_final: bool   # Whether transcription is final
+# Example: Handle real-time transcription
+@agent.on("user_input_transcribed")
+async def handle_transcription(ev: UserInputTranscribedEvent):
+    if ev.is_final:
+        await db.log_conversation(ev.transcript)
+        ui.update_transcript(ev.transcript, final=True)
+    else:
+        ui.show_interim_transcript(ev.transcript)
 ```
 
 #### agent_state_changed
-Emitted when agent's state changes
+Indicates state transitions in the agent
 ```python
-class AgentStateChangedEvent(BaseModel):
-    type: Literal["agent_state_changed"] = "agent_state_changed"
-    state: AgentState  # New agent state
+# Example: Control recording based on state
+@agent.on("agent_state_changed")
+def handle_state_change(ev: AgentStateChangedEvent):
+    match ev.state:
+        case AgentState.LISTENING:
+            recorder.start()
+        case AgentState.PROCESSING:
+            recorder.pause()
+        case AgentState.SPEAKING:
+            recorder.resume()
 ```
 
 #### metrics_collected
-Emitted periodically with performance metrics
+Provides performance data at regular intervals
 ```python
-class MetricsCollectedEvent(BaseModel):
-    type: Literal["metrics_collected"] = "metrics_collected"
-    metrics: AgentMetrics  # Performance metrics
+# Example: Monitor real-time metrics
+@agent.on("metrics_collected")
+def handle_metrics(ev: MetricsCollectedEvent):
+    dashboard.update(
+        stt_latency=ev.metrics.stt_latency,
+        llm_ttft=ev.metrics.llm_ttft,
+        tts_latency=ev.metrics.tts_latency
+    )
+    if ev.metrics.error_rate > 0.1:
+        alert("High error rate detected!")
 ```
 
 #### conversation_item_added
-Emitted when new message is added to conversation history
+Fired when new messages are added to history
 ```python
-class ConversationItemAddedEvent(BaseModel):
-    type: Literal["conversation_item_added"] = "conversation_item_added"
-    message: ChatMessage  # Added chat message
+# Example: Maintain conversation log
+@agent.on("conversation_item_added")
+def log_message(ev: ConversationItemAddedEvent):
+    if ev.message.role == ChatMessage.Role.USER:
+        analytics.track("user_message", text=ev.message.content)
+    elif ev.message.role == ChatMessage.Role.ASSISTANT:
+        analytics.track("agent_response", text=ev.message.content)
 ```
 
-### Usage Example
+### Typical Event Handling Pattern
 ```python
-agent.on("user_input_transcribed", lambda ev: print(f"User said: {ev.transcript}"))
-agent.on("agent_state_changed", lambda ev: update_ui(ev.state))
+class VoiceAssistant:
+    def __init__(self, agent):
+        self.agent = agent
+        self.setup_handlers()
+        
+    def setup_handlers(self):
+        self.agent.on("user_started_speaking", self.on_user_start)
+        self.agent.on("user_input_transcribed", self.on_transcription)
+        self.agent.on("agent_state_changed", self.on_state_change)
+    
+    def on_user_start(self, _):
+        self.active_transcription = ""
+        
+    def on_transcription(self, ev):
+        self.active_transcription += ev.transcript
+        if ev.is_final:
+            self.process_complete_query(self.active_transcription)
+    
+    def on_state_change(self, ev):
+        self.current_state = ev.state
+        self.update_connection_quality(ev.state)
 ```
 
-
+This shows practical patterns for receiving and handling events in a voice agent implementation, including state management, UI updates, and performance monitoring.
 
 
 ## AgentTask Class
+
+[source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/voice/agent_task.py)
 
 Core class representing a conversational task with configurable processing pipeline.
 
@@ -578,6 +644,8 @@ These hooks enable precise control over conversation state management while main
 
 ## InlineTask Class
 
+[source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/voice/agent_task.py)
+
 Specialized AgentTask for asynchronous operations within AI functions.
 
 ### Usage Example
@@ -610,6 +678,8 @@ def complete(self, result: TaskResult_T | AIError) -> None:
 4. Task nodes should yield processing results for real-time streaming
 
 ## Worker Class
+
+[source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/worker.py)
 
 Handles deployment and management of VoiceAgent instances across multiple LiveKit rooms.
 
@@ -699,6 +769,8 @@ async def main():
 
 ## VAD (Voice Activity Detection)
 
+[source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/vad.py)
+
 Core interface for real-time speech detection in audio streams.
 
 ### Base Class
@@ -773,6 +845,8 @@ async with vad.stream() as stream:
    - PyannoteVAD: Speaker-aware detection
 
 ## LLM (Language Model) Integration
+
+[source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/llm/llm.py)
 
 Core interface for integrating language models into voice agents.
 
@@ -1068,6 +1142,8 @@ This documentation appears in the [LLM Integration](#llm-language-model-integrat
 
 ## Chat Context Management
 
+[source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/llm/chat_context.py)
+
 Core class for managing conversation history and function calling state.
 
 ### Class Definition
@@ -1158,6 +1234,11 @@ ctx.trim_messages(max_messages=2)
 - **Function Call Chaining:** Handle sequential function executions
 
 ## Fallback Adapters
+
+* Fallback Adapter Source
+    * [llm source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/llm/fallback_adapter.py)
+    * [stt source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/stt/fallback_adapter.py)
+    * [tts source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/tts/fallback_adapter.py)
 
 Utility classes for implementing failover and fallback strategies across speech components.
 
@@ -1312,9 +1393,13 @@ fallback_adapter.on_recovery = lambda svc: print(f"Recovered {svc}")
 
 ## Audio Recognition Pipeline
 
+[source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/voice/audio_recognition.py)
+
 Core components for converting speech to text and managing conversation flow.
 
 ## Speech-to-Text (STT) Implementation
+
+[source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/stt/stt.py)
 
 ### Core STT Interface
 
@@ -1443,6 +1528,8 @@ class StreamAdapter(STT):
 
 ## Text-to-Speech (TTS) Implementation
 
+[source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/tts/tts.py)
+
 ### Core TTS Interface
 
 ```python
@@ -1567,6 +1654,8 @@ class StreamAdapter(TTS):
 - **Multilingual Synthesis**: Automatic language detection
 
 ### Monitoring Metrics
+
+[source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/metrics/base.py)
 
 | Metric             | Description                          | Alert Threshold    | Function Calling Impact          |
 |--------------------|--------------------------------------|--------------------|-----------------------------------|
@@ -1759,16 +1848,6 @@ async def stt_wrapper(audio_stream):
     result = await stt.process(audio_stream)
     utils.metrics.record("stt_latency", time.monotonic() - start)
     return result
-```
-
-### Key Statistical Measures
-
-```mermaid
-pie title Metric Distribution
-    "Average (Mean)" : 40
-    "90th Percentile" : 35
-    "Maximum" : 15
-    "Minimum" : 10
 ```
 
 ### Monitoring Best Practices
