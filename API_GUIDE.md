@@ -13,6 +13,15 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
   - [Main Methods](#main-methods)
   - [Events](#events)
   - [Usage Example](#usage-example)
+  - [Voice Agent Events Guide](#voice-agent-events-guide)
+  - [Event Types](#event-types)
+    - [user_started_speaking](#user_started_speaking)
+    - [user_stopped_speaking](#user_stopped_speaking)
+    - [user_input_transcribed](#user_input_transcribed)
+    - [agent_state_changed](#agent_state_changed)
+    - [metrics_collected](#metrics_collected)
+    - [conversation_item_added](#conversation_item_added)
+  - [Usage Example](#usage-example-4)
   
 - [AgentTask Class](#agenttask-class)
   - [Initialization](#initialization-1)
@@ -66,6 +75,7 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
 - [Performance Monitoring & Metrics](#performance-monitoring--metrics)
   - [Core Metrics](#core-metrics)
   - [Monitoring Best Practices](#monitoring-best-practices)
+
 
 ## VoiceAgent Class
 
@@ -271,6 +281,105 @@ async def main():
 2. Agent states flow: INITIALIZING → LISTENING → SPEAKING → ...
 3. Use `SpeechHandle` to control individual speech outputs
 4. RoomIO handles automatic audio input/output when connected to a room
+
+## Voice Agent Events Guide
+
+### Event Flow Diagram
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant VAD
+    participant STT
+    participant LLM
+    participant TTS
+    participant Agent
+
+    User->>VAD: Starts speaking
+    VAD->>Agent: user_started_speaking
+    loop Audio Processing
+        User->>STT: Audio frames
+        STT->>Agent: user_input_transcribed (interim)
+    end
+    User->>VAD: Stops speaking
+    VAD->>Agent: user_stopped_speaking
+    STT->>Agent: user_input_transcribed (final)
+    Agent->>LLM: Generate response
+    Agent->>Agent: agent_state_changed (PROCESSING)
+    LLM->>TTS: Convert text to speech
+    Agent->>Agent: conversation_item_added (LLM response)
+    TTS->>Agent: agent_started_speaking
+    Agent->>Agent: agent_state_changed (SPEAKING)
+    loop Audio Output
+        TTS->>User: Audio frames
+    end
+    TTS->>Agent: agent_stopped_speaking
+    Agent->>Agent: agent_state_changed (LISTENING)
+    Note over Agent: Periodically emits<br>metrics_collected
+```
+
+Key Observations:
+1. Events follow voice interaction lifecycle
+2. State changes are always wrapped in agent_state_changed
+3. Transcription happens incrementally (interim → final)
+4. Metrics are emitted independently of interaction flow
+
+### Event Types
+
+#### user_started_speaking
+Emitted when user begins speaking
+```python
+class UserStartedSpeakingEvent(BaseModel):
+    type: Literal["user_started_speaking"] = "user_started_speaking"
+```
+
+#### user_stopped_speaking
+Emitted when user stops speaking
+```python
+class UserStoppedSpeakingEvent(BaseModel):
+    type: Literal["user_stopped_speaking"] = "user_stopped_speaking"
+```
+
+#### user_input_transcribed
+Emitted when user speech is transcribed
+```python
+class UserInputTranscribedEvent(BaseModel):
+    type: Literal["user_input_transcribed"] = "user_input_transcribed"
+    transcript: str  # Transcribed text
+    is_final: bool   # Whether transcription is final
+```
+
+#### agent_state_changed
+Emitted when agent's state changes
+```python
+class AgentStateChangedEvent(BaseModel):
+    type: Literal["agent_state_changed"] = "agent_state_changed"
+    state: AgentState  # New agent state
+```
+
+#### metrics_collected
+Emitted periodically with performance metrics
+```python
+class MetricsCollectedEvent(BaseModel):
+    type: Literal["metrics_collected"] = "metrics_collected"
+    metrics: AgentMetrics  # Performance metrics
+```
+
+#### conversation_item_added
+Emitted when new message is added to conversation history
+```python
+class ConversationItemAddedEvent(BaseModel):
+    type: Literal["conversation_item_added"] = "conversation_item_added"
+    message: ChatMessage  # Added chat message
+```
+
+### Usage Example
+```python
+agent.on("user_input_transcribed", lambda ev: print(f"User said: {ev.transcript}"))
+agent.on("agent_state_changed", lambda ev: update_ui(ev.state))
+```
+
+
 
 
 ## AgentTask Class
@@ -1762,3 +1871,4 @@ gantt
 7. Combine with distributed tracing for debugging
 
 This section should be added after the [Error Handling Strategies](#error-handling-strategies) section in the API guide.
+
