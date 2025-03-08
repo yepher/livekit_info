@@ -1,7 +1,9 @@
 #!/bin/bash
 
 # Combine all sections into API_GUIDE.md
-cat sections/00_header.md > API_GUIDE.md
+cat do_not_edit.md > API_GUIDE.md
+
+cat sections/00_header.md >> API_GUIDE.md
 
 cat sections/01_voice_agent.md >> API_GUIDE.md
 cat sections/02_agent_task.md >> API_GUIDE.md
