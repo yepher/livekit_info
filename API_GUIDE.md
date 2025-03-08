@@ -1,89 +1,11 @@
-**TODO**
-
-* when agents 1.0 is released replace `/blob/dev-1.0/` with `/blob/main/`
-* document avatar
-* Add best practices (ie least network latency to major 3rd party components)
-* Add SIP info
-* add EOUMetrics[`transcription_delay`, `end_of_utterance_delay`]
-
 # Voice Agent API Guide
 
 API guide for [Agents 1.0](https://github.com/livekit/agents/tree/dev-1.0)
 
 See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6ebOhQ/65PClrBHjc0) cross linking drawings
 
-## Table of Contents
-- [VoiceAgent Class](#voiceagent-class)
-  - [Initialization](#initialization)
-  - [Key Parameters](#key-parameters)
-  - [Detailed Explanation of max_fnc_steps](#detailed-explanation-of-max_fnc_steps)
-  - [Key Properties](#key-properties)
-  - [Main Methods](#main-methods)
-  - [Events](#events)
-  - [Usage Example](#usage-example)
-  - [Voice Agent Events Guide](#voice-agent-events-guide)
-  - [Event Types](#event-types)
-    - [user_started_speaking](#user_started_speaking)
-    - [user_stopped_speaking](#user_stopped_speaking)
-    - [user_input_transcribed](#user_input_transcribed)
-    - [agent_state_changed](#agent_state_changed)
-    - [metrics_collected](#metrics_collected)
-    - [conversation_item_added](#conversation_item_added)
-  - [Usage Example](#usage-example-4)
-  
-- [AgentTask Class](#agenttask-class)
-  - [Initialization](#initialization-1)
-  - [Key Properties](#key-properties-1)
-  - [Pipeline Customization](#pipeline-customization-methods)
 
-- [InlineTask Class](#inlinetask-class)
-  - [Usage Example](#usage-example-1)
-
-- [Task Requirements](#task-requirements)
-
-- [Worker Class](#worker-class)
-  - [Initialization](#initialization-2)
-  - [Key Methods](#key-methods)
-  - [Events](#events-1)
-  - [Usage Example](#usage-example-2)
-  - [Worker Management Tips](#worker-management-tips)
-
-- [VAD (Voice Activity Detection)](#vad-voice-activity-detection)
-  - [Base Class](#base-class)
-  - [Detection Events](#detection-events)
-  - [Usage Example](#usage-example-3)
-  - [Configuration Tips](#configuration-tips)
-
-- [LLM (Language Model) Integration](#llm-language-model-integration)
-  - [Base Classes](#base-classes)
-  - [Function Execution Context](#function-execution-context)
-  - [Response Types](#response-types)
-  - [Best Practices](#best-practices)
-
-- [Chat Context Management](#chat-context-management)
-  - [Class Definition](#class-definition)
-  - [Message Types](#message-types)
-  - [Key Methods](#key-methods-1)
-
-- [Fallback Adapters](#fallback-adapters)
-  - [FallbackAdapter Class](#fallbackadapter-class)
-  - [Supported Services](#supported-services)
-  - [Configuration Tips](#configuration-tips-1)
-
-- [Audio Recognition Pipeline](#audio-recognition-pipeline)
-
-- [Speech-to-Text (STT) Implementation](#speech-to-text-stt-implementation)
-  - [Core STT Interface](#core-stt-interface)
-  - [Streaming Recognition](#streaming-recognition)
-
-- [Text-to-Speech (TTS) Implementation](#text-to-speech-tts-implementation)
-  - [Core TTS Interface](#core-tts-interface)
-  - [Streaming Implementation](#streaming-implementation)
-
-- [Performance Monitoring & Metrics](#performance-monitoring--metrics)
-  - [Core Metrics](#core-metrics)
-  - [Monitoring Best Practices](#monitoring-best-practices)
-
+[TOC]
 
 ## VoiceAgent Class 
 [source code](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/voice/voice_agent.py)
@@ -444,7 +366,6 @@ class VoiceAssistant:
 ```
 
 This shows practical patterns for receiving and handling events in a voice agent implementation, including state management, UI updates, and performance monitoring.
-
 
 ## AgentTask Class
 
@@ -1950,4 +1871,13 @@ gantt
 7. Combine with distributed tracing for debugging
 
 This section should be added after the [Error Handling Strategies](#error-handling-strategies) section in the API guide.
+
+## TODO
+
+* when agents 1.0 is released replace `/blob/dev-1.0/` with `/blob/main/`
+* document avatar
+* Add best practices (ie least network latency to major 3rd party components)
+* Add SIP info
+* add EOUMetrics[`transcription_delay`, `end_of_utterance_delay`]
+
 

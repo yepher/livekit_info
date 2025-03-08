@@ -1,0 +1,77 @@
+## VAD (Voice Activity Detection)
+
+[source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/vad.py)
+
+Core interface for real-time speech detection in audio streams.
+
+### Base Class
+
+```python
+class VAD:
+    @abstractmethod
+    def stream(
+        self,
+        *,
+        min_silence_duration: float = 0.5,
+        min_silence_threshold: float = 0.3,
+        **kwargs,
+    ) -> AsyncContextManager[AsyncIterable[vad.VADEvent]]:
+        """Create a streaming VAD detector
+        
+        Args:
+            min_silence_duration: Silence duration to trigger speech end
+            min_silence_threshold: Energy level threshold for silence
+        """
+```
+
+### Key Properties
+
+| Property            | Description                                  |
+|---------------------|----------------------------------------------|
+| `sample_rate`       | Supported audio sample rate (typically 16000)|
+| `frame_duration`    | Audio frame duration in seconds (typically 0.02-0.03) |
+
+### Detection Events
+
+```python
+class VADEvent:
+    type: VADEventType  # START, UPDATE, or END
+    speech: bool        # Whether speech is detected
+    probability: float  # Confidence score (0-1)
+    timestamp: float    # Event time in seconds
+```
+
+### Usage Example
+
+```python
+# Using WebRTC VAD implementation
+from livekit.agents.vad import WebRTCVAD
+
+vad = WebRTCVAD()
+async with vad.stream() as stream:
+    async for frame in audio_source:
+        async for event in stream.process_frame(frame):
+            if event.type == VADEventType.START:
+                print("Speech started")
+            elif event.type == VADEventType.END:
+                print("Speech ended after", event.timestamp, "seconds")
+```
+
+### Configuration Tips
+
+1. Adjust `min_silence_duration` to control how quickly speech ends are detected
+2. Higher `min_silence_threshold` makes detection more conservative
+3. Use 20-30ms frames for optimal performance
+4. Chain with STT for automatic speech segmentation
+5. Implement custom VAD by subclassing base class
+
+### Integration Notes
+
+1. Required for non-streaming STT implementations
+2. Used automatically by VoiceAgent when configured with [STT components](#speech-to-text-stt-implementation)
+3. Combine with turn detection for conversation management
+4. Multiple VAD implementations available:
+   - WebRTCVAD: CPU-efficient, traditional algorithm
+   - SileroVAD: Neural network-based, more accurate
+   - PyannoteVAD: Speaker-aware detection
+
