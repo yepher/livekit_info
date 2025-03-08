@@ -117,7 +117,7 @@ def __init__(
     -  Required if [`task`](#agenttask-class) is not provided
     -  Ignored if [`task`](#agenttask-class) is provided
 - [`task`](#agenttask-class): Preconfigured [AgentTask](#agenttask-class) to use
-- Components: STT, VAD, LLM, TTS - provide implementations for speech processing
+- Components: [STT](#speech-to-text-stt-implementation), [TTS](#text-to-speech-tts-implementation), [LLM](#llm-language-model-integration), [VAD](#vad-voice-activity-detection) - provide implementations for speech processing
 - `allow_interruptions`: Whether user speech interrupts agent speech; Default `True`
 - `min_interruption_duration`: Minimum duration in seconds to consider an interruption valid; Default `0.5` seconds
 - `min_endpointing_delay`: Silence duration in seconds before considering speech complete; Default `0.5` seconds
