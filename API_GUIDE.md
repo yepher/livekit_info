@@ -928,6 +928,54 @@ ctx.trim_messages(max_messages=2)
 
 Utility classes for implementing failover and fallback strategies across speech components.
 
+**fallback adapter's reliability mechanisms :**
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant FA as FallbackAdapter
+    participant P as Primary Instance
+    participant S as Secondary Instance
+    participant R as Recovery Process
+
+    C->>FA: Request (TTS/STT/LLM)
+    FA->>P: Forward Request
+    activate P
+    
+    alt Success
+        P-->>FA: Response
+        FA-->>C: Deliver Result
+    else Failure
+        P--x FA: Error/Timeout
+        deactivate P
+        FA->>S: Retry on Secondary
+        activate S
+        S-->>FA: Response
+        FA-->>C: Deliver Result
+        deactivate S
+        
+        FA->>R: Trigger Recovery Check
+        activate R
+        R->>P: Periodic Health Check
+        alt Recovered
+            P-->>R: Success
+            R-->>FA: Mark Available
+        else Still Unavailable
+            R-->>FA: Keep Marked Offline
+        end
+        deactivate R
+    end
+    
+    loop Background Recovery
+        R->>FA: Get Unavailable Instances
+        FA->>R: List of Failed Instances
+        R->>P: Test with Sample Request
+        alt Recovery Success
+            P-->>R: Healthy Response
+            R->>FA: Update Status to Available
+        end
+    end
+```
+
 ### FallbackAdapter Class
 
 ```python
