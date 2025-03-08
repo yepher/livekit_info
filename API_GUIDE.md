@@ -1,5 +1,9 @@
 # Voice Agent API Guide
 
+API guide for [Agents 1.0](https://github.com/livekit/agents/tree/dev-1.0)
+
+See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6ebOhQ/65PClrBHjc0) cross linking drawings
+
 ## Table of Contents
 - [VoiceAgent Class](#voiceagent-class)
   - [Initialization](#initialization)
@@ -63,8 +67,6 @@
   - [Core Metrics](#core-metrics)
   - [Monitoring Best Practices](#monitoring-best-practices)
 
-API guide for [Agents 1.0](https://github.com/livekit/agents/tree/dev-1.0)
-
 ## VoiceAgent Class
 
 The main class for handling voice interactions in a LiveKit room.
@@ -93,17 +95,20 @@ def __init__(
 
 **Key Parameters:**
 - `instructions`: Natural language instructions for the agent
-- `task`: Preconfigured AgentTask to use
+    -  Required if [`task`](#agenttask-class) is not provided
+    -  Ignored if [`task`](#agenttask-class) is provided
+- [`task`](#agenttask-class): Preconfigured [AgentTask](#agenttask-class) to use
 - Components: STT, VAD, LLM, TTS - provide implementations for speech processing
-- `allow_interruptions`: Whether user can interrupt agent speech
-- `min_interruption_duration`: Minimum duration to consider an interruption valid
-- `min_endpointing_delay`: Silence duration before considering speech complete
-- `max_fnc_steps`: Maximum function calling steps per LLM response (default: 5)
+- `allow_interruptions`: Whether user speech interrupts agent speech; Default `True`
+- `min_interruption_duration`: Minimum duration in seconds to consider an interruption valid; Default `0.5` seconds
+- `min_endpointing_delay`: Silence duration in seconds before considering speech complete; Default `0.5` seconds
+- `max_fnc_steps`: Maximum function calling steps allowed per LLM response (default: 5). 
 - `stt`: [Speech-to-text component](#speech-to-text-stt-implementation)
 - `tts`: [Text-to-speech component](#text-to-speech-tts-implementation)
 - `llm`: [Language model integration](#llm-language-model-integration)
 - `vad`: [Voice activity detection](#vad-voice-activity-detection)
-
+- `loop`: Used to specify which asyncio event loop should be used for handling asynchronous operations; Defaults when called from a coroutine or a callback (e.g. scheduled with call_soon or similar API), will always return the running event loop. see `asyncio.get_event_loop()`
+- 
 ### Detailed Explanation of max_fnc_steps
 
 The `max_fnc_steps` parameter governs complex LLM interactions by preventing infinite loops in function calling scenarios. Each "step" represents:
