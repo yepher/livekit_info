@@ -5,7 +5,7 @@ API guide for [Agents 1.0](https://github.com/livekit/agents/tree/dev-1.0)
 See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6ebOhQ/65PClrBHjc0) cross linking drawings
 
 
-[TOC]
+[_TOC_]
 
 ## VoiceAgent Class 
 [source code](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/voice/voice_agent.py)
