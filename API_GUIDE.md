@@ -152,6 +152,9 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
 
 ---
 
+
+
+
 ## VoiceAgent Class 
 [source code](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/voice/voice_agent.py)
 
@@ -512,6 +515,9 @@ class VoiceAssistant:
 
 This shows practical patterns for receiving and handling events in a voice agent implementation, including state management, UI updates, and performance monitoring.
 
+
+
+
 ## AgentTask Class
 
 [source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/voice/agent_task.py)
@@ -743,6 +749,9 @@ def complete(self, result: TaskResult_T | AIError) -> None:
 3. AI functions must be async when using InlineTask
 4. Task nodes should yield processing results for real-time streaming
 
+
+
+
 ## Worker Class
 
 [source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/worker.py)
@@ -833,6 +842,9 @@ async def main():
 4. Implement health checks for long-running workers
 5. Handle SIGTERM/SIGINT for graceful shutdowns
 
+
+
+
 ## VAD (Voice Activity Detection)
 
 [source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/vad.py)
@@ -909,6 +921,9 @@ async with vad.stream() as stream:
    - WebRTCVAD: CPU-efficient, traditional algorithm
    - SileroVAD: Neural network-based, more accurate
    - PyannoteVAD: Speaker-aware detection
+
+
+
 
 ## LLM (Language Model) Integration
 
@@ -1206,6 +1221,9 @@ def check_metrics():
 
 This documentation appears in the [LLM Integration](#llm-language-model-integration) section with cross-references to [Monitoring Metrics](#monitoring-and-metrics).
 
+
+
+
 ## Chat Context Management
 
 [source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/llm/chat_context.py)
@@ -1298,6 +1316,9 @@ ctx.trim_messages(max_messages=2)
 - **Selective Merging:** Combine relevant history from multiple contexts
 - **Message Metadata:** Store additional data in message objects
 - **Function Call Chaining:** Handle sequential function executions
+
+
+
 
 ## Fallback Adapters
 
@@ -1457,11 +1478,17 @@ fallback_adapter.on_recovery = lambda svc: print(f"Recovered {svc}")
 - Surfaces service-specific error metadata
 - Implements backoff between retry attempts
 
+
+
+
 ## Audio Recognition Pipeline
 
 [source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/voice/audio_recognition.py)
 
 Core components for converting speech to text and managing conversation flow.
+
+
+
 
 ## Speech-to-Text (STT) Implementation
 
@@ -1591,6 +1618,9 @@ class StreamAdapter(STT):
 - **Confidence Filtering**: Reject low-confidence transcripts
 - **Language Detection**: Automatic language identification
 - **Custom Dictionaries**: Boost domain-specific terminology
+
+
+
 
 ## Text-to-Speech (TTS) Implementation
 
@@ -1860,6 +1890,9 @@ flowchart LR
     style C stroke:#f00,stroke-width:2px
 ```
 
+
+
+
 ## Performance Monitoring & Metrics
 
 The framework provides detailed performance metrics collected through utility modules. All metrics are measured in milliseconds unless otherwise specified.
@@ -2017,6 +2050,9 @@ gantt
 
 This section should be added after the [Error Handling Strategies](#error-handling-strategies) section in the API guide.
 
+
+
+
 ## TODO
 
 * when agents 1.0 is released replace `/blob/dev-1.0/` with `/blob/main/`
@@ -2024,5 +2060,6 @@ This section should be added after the [Error Handling Strategies](#error-handli
 * Add best practices (ie least network latency to major 3rd party components)
 * Add SIP info
 * add EOUMetrics[`transcription_delay`, `end_of_utterance_delay`]
+
 
 
