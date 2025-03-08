@@ -823,14 +823,6 @@ def check_metrics():
 
 ### TTFT vs TTFB Relationship
 
-```mermaid
-pie showData
-    title Latency Composition
-    "STT Processing" : 30
-    "TTFT" : 50
-    "TTS Synthesis" : 20
-```
-
 This documentation appears in the [LLM Integration](#llm-language-model-integration) section with cross-references to [Monitoring Metrics](#monitoring-and-metrics).
 
 ## Chat Context Management
