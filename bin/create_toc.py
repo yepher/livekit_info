@@ -17,9 +17,13 @@ def generate_toc(md_content):
         if match:
             level = len(match.group(1))
             title = match.group(2).strip()
-            # Convert title to anchor link
+            
+            # Generate GitHub-compatible anchor
             anchor = re.sub(r'[^\w\s-]', '', title).lower()
             anchor = re.sub(r'\s+', '-', anchor)
+            anchor = re.sub(r'-+', '-', anchor)  # Collapse multiple dashes
+            anchor = anchor.strip('-')  # Remove leading/trailing dashes
+            
             # Create TOC entry with proper indentation
             indent = '  ' * (level - 1)
             toc.append(f'{indent}- [{title}](#{anchor})')
