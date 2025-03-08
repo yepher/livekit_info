@@ -1,0 +1,2 @@
+# No external dependencies required - uses standard library modules
+# Requires Python 3.6+ (for pathlib and f-strings) 

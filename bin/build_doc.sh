@@ -21,3 +21,7 @@ cat sections/99_footer.md >> API_GUIDE.md
 # Update relative links
 sed -i '' 's/\.md//g' API_GUIDE.md 
 
+
+echo -e "Now run 'python bin/create_toc.py' to update the TOC"
+
+
