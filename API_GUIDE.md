@@ -164,6 +164,12 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
     - [Function Calling Specifics](#function-calling-specifics)
     - [Threshold Guidance](#threshold-guidance)
     - [Cross-Component Impact](#cross-component-impact)
+    - [TTS Metrics Implementation](#tts-metrics-implementation)
+    - [Metrics Collection Example](#metrics-collection-example)
+    - [Metrics Flow with Adapters](#metrics-flow-with-adapters)
+    - [Best Practices for Metrics](#best-practices-for-metrics)
+    - [Configuration Additions](#configuration-additions)
+    - [Full Synthesis Flow](#full-synthesis-flow)
   - [Performance Monitoring & Metrics](#performance-monitoring-metrics)
     - [Core Metrics](#core-metrics)
     - [Metric Collection Implementation](#metric-collection-implementation)
@@ -2012,7 +2018,7 @@ class AlloyTask(AgentTask):
         def sync_wrapper(metrics: STTMetrics):
             asyncio.create_task(self.on_metrics_collected(metrics))
             
-        llm.on("metrics_collected", sync_wrapper)
+        stt.on("metrics_collected", sync_wrapper)
 
     async def on_metrics_collected(self, metrics: STTMetrics) -> None:
         logger.info("STT Metrics Collected:")
@@ -2319,6 +2325,152 @@ flowchart LR
     style C stroke:#f00,stroke-width:2px
 ```
 
+### TTS Metrics Implementation
+
+```python
+from livekit.agents.metrics import TTSMetrics
+
+class TTSMetrics:
+    type: str = "tts_metrics"
+    label: str            # Provider identifier (e.g. "cartesia.TTS")
+    request_id: str       # Unique synthesis request ID
+    timestamp: float      # Unix timestamp of metric creation
+    ttfb: float           # Time-to-first-byte latency in seconds
+    duration: float       # Total processing duration
+    audio_duration: float # Output audio length in seconds  
+    characters_count: int # Number of input characters
+    streamed: bool        # Whether using streaming API
+    cancelled: bool       # If request was cancelled
+    error: str | None     # Error message if failed
+```
+
+### Metrics Collection Example
+
+```python
+class AlloyTask(AgentTask):
+    """
+    This is a basic example that demonstrates the use of TTS metrics.
+    """
+    def __init__(self) -> None:
+        llm = openai.LLM(model="gpt-4o-mini")
+        stt = deepgram.STT()
+        tts = cartesia.TTS()
+        super().__init__(
+            instructions="You are Alloy, a helpful assistant.",
+            stt=stt,
+            llm=llm,
+            tts=tts
+        )
+        
+        # Wrap async handler in sync function
+        def sync_wrapper(metrics: TTSMetrics):
+            asyncio.create_task(self.on_metrics_collected(metrics))
+            
+        tts.on("metrics_collected", sync_wrapper)
+
+    async def on_metrics_collected(self, metrics: TTSMetrics) -> None:
+        logger.info("TTS Metrics Collected:")
+        logger.info(f"\tType: {metrics.type}")
+        logger.info(f"\tLabel: {metrics.label}")
+        logger.info(f"\tRequest ID: {metrics.request_id}")
+        logger.info(f"\tTimestamp: {metrics.timestamp}")
+        logger.info(f"\tTTFB: {metrics.ttfb:.4f}s")
+        logger.info(f"\tDuration: {metrics.duration:.4f}s")
+        logger.info(f"\tAudio Duration: {metrics.audio_duration:.4f}s")
+        logger.info(f"\tCancelled: {metrics.cancelled}")
+        logger.info(f"\tCharacters Count: {metrics.characters_count}")
+        logger.info(f"\tStreamed: {metrics.streamed}")
+        logger.info(f"\tSpeech ID: {metrics.speech_id}")
+        logger.info(f"\tError: {metrics.error}")
+```
+
+### Metrics Flow with Adapters
+
+```mermaid
+sequenceDiagram
+    participant A as Agent
+    participant F as FallbackAdapter
+    participant T1 as TTS1
+    participant T2 as TTS2
+    
+    A->>F: synthesize()
+    F->>T1: Attempt
+    T1--xF: Failure
+    F->>T2: Fallback
+    T2-->>F: Audio
+    F-->>A: Metrics (T2)
+    T2->>F: Metrics
+    F->>A: Forward Metrics
+```
+
+Key behaviors:
+1. **FallbackAdapter** emits metrics from the active TTS provider
+2. **StreamAdapter** forwards metrics from the wrapped TTS
+3. Metrics include adapter-specific `label` for origin tracking
+4. `streamed` field indicates real-time streaming usage
+
+### Best Practices for Metrics
+
+1. **Monitor Key Ratios**:
+   ```python
+   # Ideal TTFB < 1.5s, Duration/Audio < 2.0
+   if metrics.ttfb > 1.5:
+       logger.warning("High synthesis latency")
+   
+   if metrics.duration / metrics.audio_duration > 3.0:
+       logger.error("Inefficient TTS processing")
+   ```
+
+2. **Error Handling**:
+   ```python
+   async def on_metrics_collected(self, metrics: TTSMetrics):
+       if metrics.error:
+           if "rate limit" in metrics.error:
+               await self._switch_tts_provider()
+           elif "connection" in metrics.error:
+               self._check_network_status()
+   ```
+
+3. **Adapter-Specific Tracking**:
+   ```python
+   def _handle_tts_metrics(self, metrics: TTSMetrics):
+       if "FallbackAdapter" in metrics.label:
+           self._track_fallback_usage(metrics)
+       elif "StreamAdapter" in metrics.label: 
+           self._monitor_stream_efficiency(metrics)
+   ```
+
+### Configuration Additions
+
+| Parameter          | Default | Purpose                          |
+|--------------------|---------|----------------------------------|
+| `max_ttfb`         | 2000ms  | Alert threshold for first chunk  |
+| `min_audio_ratio`  | 0.8     | Minimum audio/input duration     |
+| `error_window`     | 5       | Errors per minute before disable |
+
+### Full Synthesis Flow
+
+```mermaid
+flowchart TD
+    A[Input Text] --> B(Tokenization)
+    B --> C{TTS Engine}
+    C -->|Success| D[Audio Output]
+    C -->|Error| E[Fallback]
+    E --> F[Secondary TTS]
+    F --> D
+    D --> G[Metrics Emission]
+    
+    style C stroke:#f90,stroke-width:2px
+    style E stroke:#f00,stroke-width:2px
+```
+
+Key additions:
+1. Clear TTSMetrics class documentation
+2. Practical usage example with error handling
+3. Adapter behavior visualization
+4. Metrics-driven best practices
+5. Configuration guidance for monitoring
+6. Full system flow diagram
 
 
 
