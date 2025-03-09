@@ -45,6 +45,7 @@ This is a a summary Agent >=1.0 key changes from previous versions. If any of th
 * `VoiceAgent` can use `instruction` or an `AgentTask` but generally `AgentTask` should be prefferd now
 * `@agent.on` no longer exists. Now override `AgentTask` to receive hooks like [`on_enter`, `on_exit`, and `on_end_of_turn`]
 * LLM, STT, TTS, and VAD
+* `def prewarm(proc: JobProcess)` was deleted and should not be used.
 
 ## Minimal Voice Agent
 
@@ -131,7 +132,7 @@ if __name__ == "__main__":
 ## Example Migration
 
 
-### Previous Version
+### Previous Agent Example
 
 ```
 import logging
@@ -189,60 +190,48 @@ if __name__ == "__main__":
 
 ```
 
-### New Code Structure
+### New Agent >= 1.0 Example
 
 ```
 import logging
 
 from dotenv import load_dotenv
 from livekit.agents import JobContext, WorkerOptions, cli
-from livekit.agents.llm import ai_function
-from livekit.agents.voice import AgentTask, CallContext, VoiceAgent, UserStartedSpeakingEvent
+from livekit.agents.voice import AgentTask, VoiceAgent
 from livekit.agents.voice.room_io import RoomInputOptions
-from livekit.plugins import cartesia, deepgram, openai
-
-# from livekit.plugins import noise_cancellation
-
-logger = logging.getLogger("roomio-example")
-logger.setLevel(logging.INFO)
+from livekit.plugins import deepgram, openai, silero
 
 load_dotenv()
+logger = logging.getLogger("openai_assistant")
 
 
-
-class AlloyTask(AgentTask):
+class MyTask(AgentTask):
     def __init__(self) -> None:
         super().__init__(
-            instructions="You are Alloy.",
-            llm=openai.realtime.RealtimeModel(voice="alloy"),
+            instructions="You are Echo.",
+            stt=openai.STT(),
+            llm=openai.LLM(model="gpt-4o-mini"),
+            tts=openai.TTS(),
+            vad=silero.VAD.load(),
         )
-
-    @ai_function
-    async def talk_to_echo(self, context: CallContext):
-        return EchoTask(), "Transferring you to Echo."
 
 
 async def entrypoint(ctx: JobContext):
+    """VoiceAgent using OpenAI's GPT-4o model"""
     await ctx.connect()
 
     agent = VoiceAgent(
-        task=AlloyTask(),
+        task=MyTask(),
     )
 
     await agent.start(
         room=ctx.room,
-        room_input_options=RoomInputOptions(
-            # noise_cancellation=noise_cancellation.BVC(),
-        ),
+        room_input_options=RoomInputOptions(),
     )
 
 
 if __name__ == "__main__":
-    cli.run_app(WorkerOptions(
-        entrypoint_fnc=entrypoint
-        # agent_name="smart-agent"
-    ))
-
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
 ```
 
 
@@ -250,7 +239,7 @@ if __name__ == "__main__":
 
 LiveKit agents depends on plugins to provide services for STT, TTS, LLM, End-of-Turn, and more. 
 
-Libraries that can be loaded if the code depends on it.
+Example of libraries that can be loaded if the agent code depends on a given plugin.
 
 * Anthropic[LLM]: [livkiet-plugins-anthropic.mdc](mdc:.cursor/rules/livkiet-plugins-anthropic.mdc)
 * Assemblyai: [livkiet-plugins-assemblyai.mdc](mdc:.cursor/rules/livkiet-plugins-assemblyai.mdc)
