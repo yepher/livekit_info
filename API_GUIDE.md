@@ -1002,6 +1002,8 @@ async def main():
 
 Core interface for real-time speech detection in audio streams.
 
+**Note:** VAD is a requirement when an STT does not support streaming.
+
 ### Base Class
 
 ```python
@@ -1861,7 +1863,7 @@ class STT(ABC):
         """Create streaming recognition session"""
 ```
 
-**Note:** VAD is required when streaming is not supported by the STT plugin. example: `vad=silero.VAD.load()`
+**Note:** VAD is required when streaming is not supported by the STT plugin. Example: `vad=silero.VAD.load()`
 
 
 #### Speech Data Structure
