@@ -15,6 +15,8 @@ git+https://github.com/livekit/agents.git@dev-1.0#subdirectory=livekit-plugins//
 git+https://github.com/livekit/agents.git@dev-1.0#subdirectory=livekit-plugins/livekit-plugins-cartesia
 git+https://github.com/livekit/agents.git@dev-1.0#subdirectory=livekit-plugins/livekit-plugins-elevenlabs
 
+git+https://github.com/livekit/agents.git@dev-1.0#subdirectory=livekit-plugins/livekit-plugins-silero
+
 
 
 

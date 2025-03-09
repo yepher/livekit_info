@@ -766,6 +766,9 @@ def complete(self, result: TaskResult_T | AIError) -> None:
 
 # LiveKit Avatar Integration Framework
 
+[Source](https://github.com/livekit/agents/tree/cwilson/simli_test/examples/simli_avatar)
+
+
 This document outlines the architecture for integrating third-party avatar services using LiveKit's agent system. The framework enables real-time avatar animation synced with audio input.
 
 ## Core Components
@@ -897,7 +900,6 @@ flowchart TB
 | D-ID | Natural gestures | Custom video pipeline |
 | Tavus | Personalized cloning | WebRTC direct |
 
-[Source Reference](https://github.com/livekit/agents/tree/cwilson/simli_test/examples/simli_avatar)
 
 
 
@@ -1858,6 +1860,9 @@ class STT(ABC):
     def stream(self, language: str | None = None) -> RecognizeStream:
         """Create streaming recognition session"""
 ```
+
+**Note:** VAD is required when streaming is not supported by the STT plugin. example: `vad=silero.VAD.load()`
+
 
 #### Speech Data Structure
 ```python
