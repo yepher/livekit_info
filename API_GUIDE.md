@@ -52,11 +52,11 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
         - [`on_end_of_turn`](#on_end_of_turn)
         - [`on_exit`](#on_exit)
       - [Execution Flow](#execution-flow)
-      - [Best Practices](#best-practices)
   - [InlineTask Class](#inlinetask-class)
     - [Usage Example](#usage-example)
     - [Key Methods](#key-methods)
   - [Task Requirements](#task-requirements)
+  - [Component Dependencies](#component-dependencies)
 - [LiveKit Avatar Integration Framework](#livekit-avatar-integration-framework)
   - [Core Components](#core-components)
   - [Implementation Pattern](#implementation-pattern)
@@ -595,6 +595,8 @@ async def tts_node(self, text) -> AudioFrame:
 
 The conversation engine provides three key lifecycle hooks for managing conversation flow and state:
 
+**Example Usage**
+
 ```python
     class AlloyTask(AgentTask):
         def __init__(self) -> None:
@@ -606,12 +608,19 @@ The conversation engine provides three key lifecycle hooks for managing conversa
             )
     
         async def on_enter(self) -> None:
+            """Called when the task is entered"""
             logger.info("on_enter")
     
         async def on_exit(self) -> None:
+            """Called when the task is exited"""
             logger.info("on_exit")
     
         async def on_end_of_turn(self, chat_ctx: llm.ChatContext, new_message: llm.ChatMessage) -> None:
+            """Called when the user has finished speaking, and the LLM is about to respond
+    
+            This is a good opportunity to update the chat context or edit the new message before it is
+            sent to the LLM.
+            """
             logger.info(f"on_end_of_turn: cat_ctx={chat_ctx}; new_message={new_message}")
             
         @ai_function
@@ -627,18 +636,16 @@ The conversation engine provides three key lifecycle hooks for managing conversa
 #### Hook Overview
 | Hook             | Trigger Point                          | Execution Order | Async Support | Error Handling                  |
 |------------------|----------------------------------------|-----------------|---------------|----------------------------------|
-| `on_enter`       | When entering new state/turn           | First           | Yes           | Blocks state transition if fails |
-| `on_end_of_turn` | After processing input, before transition | Second        | Yes           | Logs error but proceeds          |
-| `on_exit`        | When leaving current state/turn        | Last            | Yes           | Final chance for cleanup         |
+| `on_enter`       | When entering new state/turn           | Pre-processing  | Yes           | Blocks state transition if fails |
+| `on_end_of_turn` | After processing input, before response| Mid-processing  | Yes           | Logs error but proceeds          |
+| `on_exit`        | When leaving current state/turn        | Post-processing | Yes           | Final cleanup chance             |
 
 ### Detailed Behavior
 
 ##### `on_enter`
 ```python
-async def on_enter(ctx: Context) -> None:
+async def on_enter() -> None:
     """Initialize conversation state"""
-    ctx.store["user_profile"] = await load_profile(ctx.user_id)
-    await ctx.send_message("Welcome! How can I help?")
 ```
 **Typical Use Cases:**
 - User session initialization
@@ -648,15 +655,10 @@ async def on_enter(ctx: Context) -> None:
 
 ##### `on_end_of_turn`
 ```python
-async def on_end_of_turn(ctx: Context) -> None:
+async def on_end_of_turn(self, chat_ctx: llm.ChatContext, new_message: llm.ChatMessage) -> None:
     """Post-processing before state transition"""
-    await analytics.track_event(
-        event="turn_complete",
-        duration=ctx.turn_duration,
-        success=ctx.last_response.ok
-    )
-    ctx.clear_temp_data()
 ```
+
 **Common Patterns:**
 - Conversation history persistence
 - Performance metrics collection
@@ -665,11 +667,8 @@ async def on_end_of_turn(ctx: Context) -> None:
 
 ##### `on_exit` 
 ```python
-async def on_exit(ctx: Context) -> None:
+async def on_exit() -> None:
     """Final cleanup operations"""
-    await db.release_lock(ctx.conversation_id)
-    if ctx.session_active:
-        await ctx.send_message("Session ending in 5 seconds...")
 ```
 **Critical Responsibilities:**
 - Resource deallocation
@@ -681,67 +680,32 @@ async def on_exit(ctx: Context) -> None:
 
 ```mermaid
 sequenceDiagram
-    participant U as Client
-    participant E as VoiceAgent
-    participant H as AgentTask<br>Callback Hook
+    participant U as User
+    participant A as VoiceAgent
+    participant T as AgentTask
     
-    U->>E: New Input
-    E->>H: Trigger on_enter()
-    H-->>E: Init Complete
-    E->>E: Process Input
-    E->>H: Trigger on_end_of_turn()
-    H-->>E: Turn Complete
-    E->>H: Trigger on_exit()
-    H-->>E: Cleanup Done
-    E->>U: Send Response
+    U->>A: Audio Input
+    A->>T: on_enter()
+    T-->>A: Initialization
+    A->>A: STT → LLM → TTS
+    A->>T: on_end_of_turn()
+    T-->>A: Context Updates
+    A->>T: on_exit()
+    T-->>A: Cleanup
+    A->>U: Audio Response
 ```
 
-#### Best Practices
-
-1. **Async Optimization**
-```python
-# Parallelize independent operations
-async def on_enter(ctx):
-    user_data, catalog = await asyncio.gather(
-        users.get(ctx.user_id),
-        products.fetch_catalog()
-    )
-    ctx.store.update(user_data=user_data, catalog=catalog)
-```
-
-2. **Error Resilience**
-```python
-# Implement retry logic for critical operations
-async def on_end_of_turn(ctx):
-    for attempt in range(3):
-        try:
-            await analytics.log_turn(ctx.turn_data)
-            break
-        except Exception as e:
-            if attempt == 2: 
-                ctx.log_error("Failed to log turn", error=e)
-```
-
-3. **State Safety**
-```python
-# Use context managers for resource handling
-async def on_exit(ctx):
-    async with ctx.get_db_connection() as conn:
-        await conn.execute("COMMIT")
-        await conn.close()
-```
-
-4. **Timeout Management**
+**Timeout Management**
 ```python
 # Prevent hook hangs with timeouts
-async def on_enter(ctx):
+async def on_enter():
     try:
         await asyncio.wait_for(
             external_service.initialize(),
             timeout=5.0
         )
     except TimeoutError:
-        ctx.fallback_to_cached_config()
+        """Hanlde Errror"""
 ```
 
 These hooks enable precise control over conversation state management while maintaining async performance characteristics. Implement them to add business logic while leveraging the framework's reliability mechanisms.
@@ -756,16 +720,17 @@ Specialized AgentTask for asynchronous operations within AI functions.
 ### Usage Example
 
 ```python
-class MyTask(InlineTask[str]):
+class DataTask(InlineTask[str]):
     async def run(self):
-        # Execute async operations
-        result = await some_async_operation()
+        """Execute within AI function context"""
+        result = await process_data()
         self.complete(result)
 
 @llm.ai_function()
-async def process_data():
-    task = MyTask(instructions="Process data")
-    return await task
+async def analyze_data():
+    """Launch async task from AI function"""
+    task = DataTask(instructions="Analyze dataset")
+    return await task  # Returns control to conversation flow
 ```
 
 ### Key Methods
@@ -781,6 +746,15 @@ def complete(self, result: TaskResult_T | AIError) -> None:
 2. TTS automatically uses sentence tokenization if not streaming
 3. AI functions must be async when using InlineTask
 4. Task nodes should yield processing results for real-time streaming
+
+## Component Dependencies
+
+| Component | Requirement                              | Default Behavior              |
+|-----------|------------------------------------------|--------------------------------|
+| STT       | Requires VAD if non-streaming            | Uses Deepgram STT              |
+| LLM       | Streaming requires RealtimeModel        | Uses OpenAI GPT-4             |
+| TTS       | Auto-segments text if non-streaming      | Uses Cartesia TTS             |
+| VAD       | Required for push-to-talk detection      | Uses WebRTC VAD               |
 
 
 
