@@ -142,6 +142,10 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
     - [Best Practices](#best-practices)
     - [Configuration Guide](#configuration-guide)
     - [Advanced Features](#advanced-features)
+    - [STT Metrics Collection](#stt-metrics-collection)
+      - [Key Metrics Fields](#key-metrics-fields)
+      - [Example Usage](#example-usage)
+      - [Metrics Flow Diagram](#metrics-flow-diagram)
   - [Text-to-Speech (TTS) Implementation](#text-to-speech-tts-implementation)
     - [Core TTS Interface](#core-tts-interface)
       - [Synthesized Audio Structure](#synthesized-audio-structure)
@@ -1279,8 +1283,8 @@ class LLMMetrics:
     duration: float  # Total processing time in seconds
     ttft: float  # Time to first token in seconds
     cancelled: bool  # Whether request was cancelled
-    completion_tokens: int
-    prompt_tokens: int
+    completion_tokens: int # tokens that the model generates in response to the input
+    prompt_tokens: int # tokens input into the model
     total_tokens: int
     tokens_per_second: float
 ```
@@ -1960,6 +1964,89 @@ class StreamAdapter(STT):
 - **Confidence Filtering**: Reject low-confidence transcripts
 - **Language Detection**: Automatic language identification
 - **Custom Dictionaries**: Boost domain-specific terminology
+
+### STT Metrics Collection
+
+```python
+class STTMetrics:
+    type: str = "stt_metrics"
+    label: str              # STT provider identifier (e.g. "deepgram.STT")
+    request_id: str         # Unique recognition identifier
+    timestamp: float        # Unix timestamp of metric creation
+    duration: float         # Total processing time in seconds
+    audio_duration: float   # Length of audio processed in seconds
+    streamed: bool          # Whether metrics came from streaming API
+    error: str | None       # Error message if recognition failed
+```
+
+#### Key Metrics Fields
+
+| Field | Description |
+|-------|-------------|
+| `audio_duration` | Actual duration of audio processed |
+| `duration` | Total processing time from request to response |
+| `streamed` | True for streaming recognitions, False for single-shot |
+| `error` | Error message if recognition failed |
+
+#### Example Usage
+
+```python
+from livekit.agents.metrics import STTMetrics
+
+class AlloyTask(AgentTask):
+    """
+    This is a basic example that demonstrates the use of STT metrics.
+    """
+    def __init__(self) -> None:
+        llm = openai.LLM(model="gpt-4o-mini")
+        stt = deepgram.STT()
+        tts = cartesia.TTS()
+        super().__init__(
+            instructions="You are Echo.",
+            stt=stt,
+            llm=llm,
+            tts=tts
+        )
+        
+        # Wrap async handler in sync function
+        def sync_wrapper(metrics: STTMetrics):
+            asyncio.create_task(self.on_metrics_collected(metrics))
+            
+        llm.on("metrics_collected", sync_wrapper)
+
+    async def on_metrics_collected(self, metrics: STTMetrics) -> None:
+        logger.info("STT Metrics Collected:")
+        logger.info(f"\tType: {metrics.type}")
+        logger.info(f"\tLabel: {metrics.label}")
+        logger.info(f"\tRequest ID: {metrics.request_id}")
+        logger.info(f"\tTimestamp: {metrics.timestamp}")
+        logger.info(f"\tDuration: {metrics.duration:.4f}s")
+        logger.info(f"\tSpeech ID: {metrics.speech_id}")
+        logger.info(f"\tError: {metrics.error}")
+        logger.info(f"\tStreamed: {metrics.streamed}")
+        logger.info(f"\tAudio Duration: {metrics.audio_duration:.4f}s")
+```
+
+#### Metrics Flow Diagram
+
+```mermaid
+sequenceDiagram
+    participant A as Audio Input
+    participant S as STT Service
+    participant M as Metrics Handler
+    
+    A->>S: Audio frames
+    S->>M: Start processing (timestamp)
+    S-->>S: Process audio
+    S->>M: Emit metrics (duration, error, etc)
+    M->>A: Log/Analyze metrics
+```
+
+Key points:
+1. Metrics are emitted after each recognition request
+2. Streamed recognitions emit multiple metrics events
+3. Error field helps diagnose recognition failures
+4. Duration/audio_duration ratio shows processing efficiency
 
 
 
