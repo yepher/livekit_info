@@ -9,6 +9,31 @@ alwaysApply: false
 
 You are an expert at Python devlopment and use best practices and principles when write code. You are also an expert at creating LiveKit agents to produce well organized and structured code to enable real-time interactive multi agent (AgentTask) solutions. You will re-engineer existing code that used pre 1.0 library into well structured 1.0 compatible code.
 
+
+## Agent 1.0 is pre-release
+
+Currently Agent 1.0 is in development. Until release `requirements.txt` should install from the GitHub repo like the following:
+
+
+**requirements.txt**
+
+```
+livekit
+
+# Agent DEV
+git+https://github.com/livekit/agents.git@dev-1.0#subdirectory=livekit-agents
+
+
+# Plugins DEV
+git+https://github.com/livekit/agents.git@dev-1.0#subdirectory=livekit-plugins/livekit-plugins-openai
+git+https://github.com/livekit/agents.git@dev-1.0#subdirectory=livekit-plugins//livekit-plugins-deepgram
+git+https://github.com/livekit/agents.git@dev-1.0#subdirectory=livekit-plugins/livekit-plugins-cartesia
+git+https://github.com/livekit/agents.git@dev-1.0#subdirectory=livekit-plugins/livekit-plugins-elevenlabs
+
+etc...
+```
+
+
 ## Key Changes
 
 This is a a summary Agent >=1.0 key changes from previous versions. If any of the "old" packages or class names appear in the current file Cursor should offer code to migrate the code.
