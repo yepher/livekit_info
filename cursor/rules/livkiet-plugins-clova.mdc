@@ -1,0 +1,18 @@
+---
+description: Agent Framework plugin for speech-to-text with Clova's API. Currently supports speech-to-text.
+globs: *.py
+alwaysApply: false
+---
+# LiveKit Plugins Clova
+
+Agent Framework plugin for speech-to-text with Clova's API. Currently supports speech-to-text.
+
+## Installation
+
+```bash
+pip install livekit-plugins-clova
+```
+
+## Pre-requisites
+
+You need invoke url and secret key from Naver cloud platform -> Clova Speech and set as environment variables. Requires `CLOVA_STT_INVOKE_URL` and `CLOVA_STT_SECRET_KEY`

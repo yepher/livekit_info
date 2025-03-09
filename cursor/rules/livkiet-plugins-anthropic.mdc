@@ -1,0 +1,18 @@
+---
+description: Agent Framework plugin for services from Anthropic.
+globs: *.py
+alwaysApply: false
+---
+# LiveKit Plugins Anthropic
+
+Agent Framework plugin for services from Anthropic.
+
+## Installation
+
+```bash
+pip install livekit-plugins-anthropic
+```
+
+## Pre-requisites
+
+Requires an API key from Anthropic. It can be set as an environment variable: `ANTHROPIC_API_KEY`

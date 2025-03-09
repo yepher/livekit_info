@@ -1,0 +1,27 @@
+---
+description: Agent Framework plugin for services from OpenAI. Currently supports STT, TTS, and Dalle 3.
+globs: *.py
+alwaysApply: false
+---
+# LiveKit Plugins OpenAI
+
+Agent Framework plugin for services from OpenAI. Currently supports STT, TTS, and Dalle 3.
+
+## Installation
+
+```bash
+pip install livekit-plugins-openai
+```
+
+## Pre-requisites
+
+Requires an API key from OpenAI. It can be set as an environment variable: `OPENAI_API_KEY`
+
+## OpenAI Beta Features
+
+### Assistants API
+
+In addition to LLM, STT, and TTS, this package also supports using [OpenAI's Assistants API](mdc:https:/platform.openai.com/docs/assistants/overview) as a LLM.
+
+The Assistants API is a stateful API that used `AssistantLLM` class. It is depracated and should no longer be used.
+

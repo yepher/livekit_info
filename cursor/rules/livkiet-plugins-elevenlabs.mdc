@@ -1,0 +1,18 @@
+---
+description: gent Framework plugin for voice synthesis with [ElevenLabs](https://elevenlabs.io/) API.
+globs: *.py
+alwaysApply: false
+---
+# LiveKit Plugins Elevenlabs
+
+Agent Framework plugin for voice synthesis with ElevenLabs API.
+
+## Installation
+
+```bash
+pip install livekit-plugins-elevenlabs
+```
+
+## Pre-requisites
+
+Requires an API key from ElevenLabs. It can be set as an environment variable: `ELEVEN_API_KEY`

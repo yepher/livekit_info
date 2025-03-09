@@ -1,0 +1,18 @@
+---
+description: Agent Framework plugin for voice synthesis with Cartesia API.
+globs: *.py
+alwaysApply: false
+---
+# LiveKit Plugins Cartesia
+
+Agent Framework plugin for voice synthesis with Cartesia API.
+
+## Installation
+
+```bash
+pip install livekit-plugins-cartesia
+```
+
+## Pre-requisites
+
+Requires an API key from Cartesia. It can be set as an environment variable: `CARTESIA_API_KEY`

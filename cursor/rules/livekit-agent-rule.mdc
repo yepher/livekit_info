@@ -1,0 +1,52 @@
+---
+description: This rule help cursor with the update LiveKit Agents 1.0
+globs: *.py
+alwaysApply: false
+---
+@livekit-rule.mdc
+
+# LiveKit Agent 1.0 Rules
+
+You are an expert at Python devlopment and use best practices and principles when write code. You are also an expert at creating LiveKit agents to produce well organized and structured code to enable real-time interactive multi agent (AgentTask) solutions. You will re-engineer existing code that used pre 1.0 library into well structured 1.0 compatible code.
+
+## Key Changes
+
+This is a a summary Agent >=1.0 key changes from previous versions. If any of the "old" packages or class names appear in the current file Cursor should offer code to migrate the code.
+
+* `VoicePipelineAgent` and `MultimodalAgent` are now combined into a single interface `VoiceAgent`
+    * Model will be used to determine if 
+* `AssistantLLM` has been removed and should be converted to regular `VoiceAgent` with a similar model that does not use the Assistant API
+* The package `ivekit.agents.pipeline` has been renamed to `livekit.agents.voice`
+* `VoiceAgent` can use `instruction` or an `AgentTask` but generally `AgentTask` should be prefferd now
+* `@agent.on` no longer exists. Now override `AgentTask` to receive hooks like [`on_enter`, `on_exit`, and `on_end_of_turn`]
+* LLM, STT, TTS, and VAD
+
+
+## Plugins
+
+LiveKit agents depends on plugins to provide services for STT, TTS, LLM, End-of-Turn, and more. 
+
+Libraries that can be loaded if the code depends on it.
+
+* Anthropic[LLM]: [livkiet-plugins-anthropic.mdc](mdc:.cursor/rules/livkiet-plugins-anthropic.mdc)
+* Assemblyai: [livkiet-plugins-assemblyai.mdc](mdc:.cursor/rules/livkiet-plugins-assemblyai.mdc)
+* AWS[LLM, STT, TTS]: [livkiet-plugins-aws.mdc](mdc:.cursor/rules/livkiet-plugins-aws.mdc)
+* Azure[STT, TTS]: [livkiet-plugins-azure.mdc](mdc:.cursor/rules/livkiet-plugins-azure.mdc)  (Azure LLM is found in OpenAI plugin)
+* Cartesia[TTS]: [livkiet-plugins-cartesia.mdc](mdc:.cursor/rules/livkiet-plugins-cartesia.mdc)
+* Clova[STT]: [livkiet-plugins-clova.mdc](mdc:.cursor/rules/livkiet-plugins-clova.mdc)
+* Deepgram[TTS, STT]: [livekit-plugins-deepgram.mdc](mdc:.cursor/rules/livekit-plugins-deepgram.mdc)
+* Elevenlabs[TTS]: [livkiet-plugins-elevenlabs.mdc](mdc:.cursor/rules/livkiet-plugins-elevenlabs.mdc)
+* FAL[STT]: [livkiet-plugins-fal.mdc](mdc:.cursor/rules/livkiet-plugins-fal.mdc)
+* Google[LLM, STT, TTS]: [livkiet-plugins-google.mdc](mdc:.cursor/rules/livkiet-plugins-google.mdc)
+* LamaIndex[LLM]: [livkiet-plugins-llama-index.mdc](mdc:.cursor/rules/livkiet-plugins-llama-index.mdc)
+* NLTK: [livkiet-plugins-nltk.mdc](mdc:.cursor/rules/livkiet-plugins-nltk.mdc)
+* OpenAI[STT, TTS, LLM]: [livekit-plugins-openai.mdc](mdc:.cursor/rules/livekit-plugins-openai.mdc)
+* PlayAI[TTS]: [livkiet-plugins-playai.mdc](mdc:.cursor/rules/livkiet-plugins-playai.mdc)
+* RAG: [livkiet-plugins-rag.mdc](mdc:.cursor/rules/livkiet-plugins-rag.mdc)
+* Rime[TTS]: [livkiet-plugins-rime.mdc](mdc:.cursor/rules/livkiet-plugins-rime.mdc)
+* Silero[VAD]: [livkiet-plugins-silero.mdc](mdc:.cursor/rules/livkiet-plugins-silero.mdc)
+* Speechmatcis[STT]: [livkiet-plugins-speechmatics.mdc](mdc:.cursor/rules/livkiet-plugins-speechmatics.mdc)
+* TurnDetector (EOT): [livkiet-plugins-turn-detector.mdc](mdc:.cursor/rules/livkiet-plugins-turn-detector.mdc)
+
+
+

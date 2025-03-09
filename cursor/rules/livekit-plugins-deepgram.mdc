@@ -1,0 +1,18 @@
+---
+description: Agent Framework plugin for speech-to-text with [DeepGram](https://deepgram.com/)'s API
+globs: *.py
+alwaysApply: false
+---
+# LiveKit Plugins DeepGram
+
+Agent Framework plugin for speech-to-text with [DeepGram](mdc:https:/deepgram.com)'s API. Currently supports speech-to-text.
+
+## Installation
+
+```bash
+pip install livekit-plugins-deepgram
+```
+
+## Pre-requisites
+
+Requires an API key from DeepGram. It can be set as an environment variable: `DEEPGRAM_API_KEY`

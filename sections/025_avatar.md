@@ -1,5 +1,8 @@
 # LiveKit Avatar Integration Framework
 
+[Source](https://github.com/livekit/agents/tree/cwilson/simli_test/examples/simli_avatar)
+
+
 This document outlines the architecture for integrating third-party avatar services using LiveKit's agent system. The framework enables real-time avatar animation synced with audio input.
 
 ## Core Components
@@ -131,4 +134,3 @@ flowchart TB
 | D-ID | Natural gestures | Custom video pipeline |
 | Tavus | Personalized cloning | WebRTC direct |
 
-[Source Reference](https://github.com/livekit/agents/tree/cwilson/simli_test/examples/simli_avatar)

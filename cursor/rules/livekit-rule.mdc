@@ -1,0 +1,6 @@
+---
+description: This rule help cursor with the update LiveKit Server API
+globs: *.py
+alwaysApply: false
+---
+
