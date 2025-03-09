@@ -96,6 +96,8 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
     - [Best Practices](#best-practices)
     - [Advanced Features](#advanced-features)
     - [Key Performance Metrics](#key-performance-metrics)
+    - [Metrics Collection Example](#metrics-collection-example)
+    - [Internal Metrics Implementation](#internal-metrics-implementation)
     - [TTFT Measurement Implementation](#ttft-measurement-implementation)
     - [Optimization Techniques](#optimization-techniques)
     - [TTFT Benchmarks](#ttft-benchmarks)
@@ -622,13 +624,6 @@ The conversation engine provides three key lifecycle hooks for managing conversa
             sent to the LLM.
             """
             logger.info(f"on_end_of_turn: cat_ctx={chat_ctx}; new_message={new_message}")
-            
-        @ai_function
-        async def talk_to_echo(self, context: CallContext):
-            logger.info(f"talk_to_echo {context}")
-            return EchoTask(), "Transferring you to Echo."
-
-
 ```
 
 
@@ -1153,6 +1148,7 @@ class FunctionContext:
 | `agent`         | VoiceAgent instance for state management     |
 | `ai_functions`  | List of available AI functions               |
 | `stt/tts/llm`   | Access to configured speech services         |
+|                 | May be None if not configured               |
 
 #### Usage Example
 
@@ -1200,6 +1196,11 @@ class NavigateFunction(llm.AIFunction):
 - Limit function execution time
 - Handle service failures gracefully
 - Clean up resources in finally blocks
+
+7. **Metrics Collection**:
+   - Register metrics handlers early in agent initialization
+   - Process metrics asynchronously to avoid blocking
+   - Aggregate metrics for performance analysis
 
 ### Usage Example
 
@@ -1253,6 +1254,11 @@ class RealtimeChunk:
 5. Use streaming for real-time interactions
 6. Implement [fallback strategies](#fallback-adapters) for model errors
 
+7. **Metrics Collection**:
+   - Register metrics handlers early in agent initialization
+   - Process metrics asynchronously to avoid blocking
+   - Aggregate metrics for performance analysis
+
 ### Advanced Features
 
 - **Function Calling:** Chain multiple AI functions
@@ -1262,29 +1268,81 @@ class RealtimeChunk:
 
 ### Key Performance Metrics
 
-```mermaid
-graph TD
-    A[User Speech Ends] --> B(STT Complete)
-    B --> C[LLM Processing Starts]
-    C --> D[First Token Generated]
-    D --> E[Response Streaming Begins]
-    style C stroke:#f90,stroke-width:2px
-    style D stroke:#0f0,stroke-width:2px
+[source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/metrics/base.py)
+
+```python
+class LLMMetrics:
+    type: str  # "llm_metrics"
+    label: str  # Model identifier
+    request_id: str  # Unique request ID
+    timestamp: float  # Unix timestamp
+    duration: float  # Total processing time in seconds
+    ttft: float  # Time to first token in seconds
+    cancelled: bool  # Whether request was cancelled
+    completion_tokens: int
+    prompt_tokens: int
+    total_tokens: int
+    tokens_per_second: float
 ```
 
-**TTFT (Time to First Token):**
-- Measures latency from LLM processing start to first generated token
-- Critical metric for perceived responsiveness
-- Calculated as:
-  ```
-  TTFT = (First token timestamp) - (LLM processing start timestamp)
-  ```
+### Metrics Collection Example
 
-**Key Factors Affecting TTFT:**
-1. Model architecture (e.g., transformer size)
-2. Context window length
-3. Function calling requirements
-4. Parallel processing capabilities
+```python
+from livekit.agents.metrics import LLMMetrics
+
+class AlloyTask(AgentTask):
+    """
+    This is a basic example that demonstrates the use of LLM metrics.
+    """
+    def __init__(self) -> None:
+        llm = openai.LLM(model="gpt-4o-mini")
+        super().__init__(
+            instructions="You are Echo.",
+            stt=deepgram.STT(),
+            llm=llm,
+            tts=cartesia.TTS(),
+        )
+        
+        # Register metrics handler
+        def sync_wrapper(metrics: LLMMetrics):
+            asyncio.create_task(self.on_metrics_collected(metrics))
+
+        llm.on("metrics_collected", sync_wrapper)
+
+    async def on_metrics_collected(self, metrics: LLMMetrics) -> None:
+        logger.info("LLM Metrics Collected:")
+        logger.info(f"\tType: {metrics.type}")
+        logger.info(f"\tLabel: {metrics.label}")
+        logger.info(f"\tRequest ID: {metrics.request_id}")
+        logger.info(f"\tTimestamp: {metrics.timestamp}")
+        logger.info(f"\tDuration: {metrics.duration:.4f}s")
+        logger.info(f"\tTTFT: {metrics.ttft:.4f}s")
+        logger.info(f"\tCancelled: {metrics.cancelled}")
+        logger.info(f"\tCompletion Tokens: {metrics.completion_tokens}")
+        logger.info(f"\tPrompt Tokens: {metrics.prompt_tokens}")
+        logger.info(f"\tTotal Tokens: {metrics.total_tokens}")
+        logger.info(f"\tTokens Per Second: {metrics.tokens_per_second:.2f}")
+```
+
+This example shows how to:
+1. Import the LLMMetrics class
+2. Register a metrics handler on LLM initialization
+3. Format and log metrics with proper indentation
+4. Access key performance indicators like TTFT and token counts
+
+Added to existing sections:
+1. Added LLMMetrics class definition to "Key Performance Metrics"
+2. Added practical example to "Monitoring & Alerting" section
+3. Updated "Best Practices" with metrics collection recommendations
+
+### Internal Metrics Implementation
+
+```python
+class LLMStream:
+    async def _metrics_monitor_task(self):
+        # Internal implementation that automatically
+        # tracks and emits LLMMetrics
+```
 
 ### TTFT Measurement Implementation
 
@@ -2340,7 +2398,6 @@ This section should be added after the [Error Handling Strategies](#error-handli
 ## TODO
 
 * when agents 1.0 is released replace `/blob/dev-1.0/` with `/blob/main/`
-* document avatar
 * Add best practices (ie least network latency to major 3rd party components)
 * Add SIP info
 * add EOUMetrics[`transcription_delay`, `end_of_utterance_delay`]
