@@ -85,13 +85,6 @@ The conversation engine provides three key lifecycle hooks for managing conversa
             sent to the LLM.
             """
             logger.info(f"on_end_of_turn: cat_ctx={chat_ctx}; new_message={new_message}")
-            
-        @ai_function
-        async def talk_to_echo(self, context: CallContext):
-            logger.info(f"talk_to_echo {context}")
-            return EchoTask(), "Transferring you to Echo."
-
-
 ```
 
 
