@@ -21,6 +21,87 @@ This is a a summary Agent >=1.0 key changes from previous versions. If any of th
 * `@agent.on` no longer exists. Now override `AgentTask` to receive hooks like [`on_enter`, `on_exit`, and `on_end_of_turn`]
 * LLM, STT, TTS, and VAD
 
+## Minimal Voice Agent
+
+The following is a common structure of a `VoiceAgent`. It is also common to break out `AgentTask`s into their own source file to keep code more organized and structure.
+
+```
+import logging
+
+from dotenv import load_dotenv
+from livekit.agents import JobContext, WorkerOptions, cli
+from livekit.agents.llm import ai_function
+from livekit.agents.voice import AgentTask, CallContext, VoiceAgent, UserStartedSpeakingEvent
+from livekit.agents.voice.room_io import RoomInputOptions
+from livekit.plugins import cartesia, deepgram, openai
+
+# from livekit.plugins import noise_cancellation
+
+logger = logging.getLogger("roomio-example")
+logger.setLevel(logging.INFO)
+
+load_dotenv()
+
+
+class EchoTask(AgentTask):
+    def __init__(self) -> None:
+        super().__init__(
+            instructions="You are Echo.",
+            # llm=openai.realtime.RealtimeModel(voice="echo"),
+            stt=deepgram.STT(),
+            llm=openai.LLM(model="gpt-4o-mini"),
+            tts=cartesia.TTS(),
+        )
+
+    def on_enter(self):
+        # Register event handler when task becomes active
+        self.agent.on("user_started_speaking", self.handle_speech_start)
+        
+    def handle_speech_start(self, ev: UserStartedSpeakingEvent):
+        print("User started speaking - activating noise cancellation")
+        # Implement your custom logic here
+        # Example: self.agent.output.audio.enable_noise_cancellation(True)
+
+    @ai_function
+    async def talk_to_alloy(self, context: CallContext):
+        return AlloyTask(), "Transferring you to Alloy."
+
+
+class AlloyTask(AgentTask):
+    def __init__(self) -> None:
+        super().__init__(
+            instructions="You are Alloy.",
+            llm=openai.realtime.RealtimeModel(voice="alloy"),
+        )
+
+    @ai_function
+    async def talk_to_echo(self, context: CallContext):
+        return EchoTask(), "Transferring you to Echo."
+
+
+async def entrypoint(ctx: JobContext):
+    await ctx.connect()
+
+    agent = VoiceAgent(
+        task=AlloyTask(),
+    )
+
+    await agent.start(
+        room=ctx.room,
+        room_input_options=RoomInputOptions(
+            # noise_cancellation=noise_cancellation.BVC(),
+        ),
+    )
+
+
+if __name__ == "__main__":
+    cli.run_app(WorkerOptions(
+        entrypoint_fnc=entrypoint
+        # agent_name="smart-agent"
+    ))
+
+```
+
 
 ## Plugins
 
