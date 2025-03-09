@@ -1,0 +1,21 @@
+# uses agent code from https://github.com/livekit/agents/blob/dev-1.0
+
+python-dotenv
+
+# Livekit
+livekit
+
+# Agent DEV
+git+https://github.com/livekit/agents.git@dev-1.0#subdirectory=livekit-agents
+
+
+# Plugins DEV
+git+https://github.com/livekit/agents.git@dev-1.0#subdirectory=livekit-plugins/livekit-plugins-openai
+git+https://github.com/livekit/agents.git@dev-1.0#subdirectory=livekit-plugins//livekit-plugins-deepgram
+git+https://github.com/livekit/agents.git@dev-1.0#subdirectory=livekit-plugins/livekit-plugins-cartesia
+git+https://github.com/livekit/agents.git@dev-1.0#subdirectory=livekit-plugins/livekit-plugins-elevenlabs
+
+
+
+
+

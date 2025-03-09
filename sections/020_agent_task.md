@@ -59,14 +59,30 @@ async def tts_node(self, text) -> AudioFrame:
 The conversation engine provides three key lifecycle hooks for managing conversation flow and state:
 
 ```python
-async def on_enter(self):
-    """Called when task becomes active"""
+    class AlloyTask(AgentTask):
+        def __init__(self) -> None:
+            super().__init__(
+                instructions="You are Echo.",
+                stt=deepgram.STT(),
+                llm=openai.LLM(model="gpt-4o-mini"),
+                tts=cartesia.TTS(),
+            )
+    
+        async def on_enter(self) -> None:
+            logger.info("on_enter")
+    
+        async def on_exit(self) -> None:
+            logger.info("on_exit")
+    
+        async def on_end_of_turn(self, chat_ctx: llm.ChatContext, new_message: llm.ChatMessage) -> None:
+            logger.info(f"on_end_of_turn: cat_ctx={chat_ctx}; new_message={new_message}")
+            
+        @ai_function
+        async def talk_to_echo(self, context: CallContext):
+            logger.info(f"talk_to_echo {context}")
+            return EchoTask(), "Transferring you to Echo."
 
-async def on_exit(self):
-    """Called when task is deactivated"""
 
-async def on_end_of_turn(self, chat_ctx, new_message):
-    """Called when user finishes speaking"""
 ```
 
 
