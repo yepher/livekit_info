@@ -73,13 +73,14 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
     - [Events](#events)
     - [Usage Example](#usage-example)
     - [Worker Management Tips](#worker-management-tips)
-  - [VAD (Voice Activity Detection)](#vad-voice-activity-detection)
-    - [Base Class](#base-class)
-    - [Key Properties](#key-properties)
-    - [Detection Events](#detection-events)
+  - [Voice Activity Detection (VAD) Interface](#voice-activity-detection-vad-interface)
+    - [Core Components](#core-components)
+    - [Event Lifecycle](#event-lifecycle)
+    - [Default Configuration](#default-configuration)
+    - [Metrics Collection](#metrics-collection)
     - [Usage Example](#usage-example)
-    - [Configuration Tips](#configuration-tips)
-    - [Integration Notes](#integration-notes)
+    - [Processing Flow](#processing-flow)
+    - [Best Practices](#best-practices)
   - [LLM (Language Model) Integration](#llm-language-model-integration)
     - [Base Classes](#base-classes)
     - [Key Components](#key-components)
@@ -172,10 +173,9 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
     - [Full Synthesis Flow](#full-synthesis-flow)
   - [Performance Monitoring & Metrics](#performance-monitoring-metrics)
     - [Core Metrics](#core-metrics)
-    - [Metric Collection Implementation](#metric-collection-implementation)
-    - [Monitoring Best Practices](#monitoring-best-practices)
-    - [Specialized Metrics](#specialized-metrics)
     - [Metric Visualization](#metric-visualization)
+    - [Initial Prompt Metrics Example](#initial-prompt-metrics-example)
+  - [Metrics Round Trip (no function call)](#metrics-round-trip-no-function-call)
     - [Best Practices](#best-practices)
   - [TODO](#todo)
 
@@ -996,84 +996,166 @@ async def main():
 
 
 
-## VAD (Voice Activity Detection)
+## Voice Activity Detection (VAD) Interface
 
 [source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/vad.py)
 
-Core interface for real-time speech detection in audio streams.
+VAD is a requirement when an STT does not support streaming.
 
-**Note:** VAD is a requirement when an STT does not support streaming.
-
-### Base Class
+### Core Components
 
 ```python
-class VAD:
-    @abstractmethod
-    def stream(
-        self,
-        *,
-        min_silence_duration: float = 0.5,
-        min_silence_threshold: float = 0.3,
-        **kwargs,
-    ) -> AsyncContextManager[AsyncIterable[vad.VADEvent]]:
-        """Create a streaming VAD detector
-        
-        Args:
-            min_silence_duration: Silence duration to trigger speech end
-            min_silence_threshold: Energy level threshold for silence
-        """
-```
+class VADEventType(Enum):
+    START_OF_SPEECH = "start_of_speech"  # Speech onset detected
+    INFERENCE_DONE = "inference_done"    # Processing batch completed
+    END_OF_SPEECH = "end_of_speech"      # Speech offset detected
 
-### Key Properties
-
-| Property            | Description                                  |
-|---------------------|----------------------------------------------|
-| `sample_rate`       | Supported audio sample rate (typically 16000)|
-| `frame_duration`    | Audio frame duration in seconds (typically 0.02-0.03) |
-
-### Detection Events
-
-```python
+@dataclass
 class VADEvent:
-    type: VADEventType  # START, UPDATE, or END
-    speech: bool        # Whether speech is detected
-    probability: float  # Confidence score (0-1)
-    timestamp: float    # Event time in seconds
+    type: VADEventType
+    samples_index: int         # Audio sample index (relative to inference rate)
+    timestamp: float           # Event time in seconds.monotonic()
+    speech_duration: float     # Length of speech segment (default: 0.2-0.5s)
+    silence_duration: float    # Silence before/after speech (default: 0.3-1.0s)
+    frames: list[rtc.AudioFrame]  # Raw audio frames
+    probability: float = 0.0   # Speech confidence [0-1] (INFERENCE_DONE only)
+    inference_duration: float = 0.0  # Processing time (INFERENCE_DONE only)
 ```
+
+### Event Lifecycle
+
+```mermaid
+sequenceDiagram
+    participant Mic as Microphone
+    participant VAD as VAD Stream
+    participant App as Agent
+    
+    Mic->>VAD: Audio Frames
+    VAD->>App: START_OF_SPEECH (buffered frames)
+    loop Every 100ms
+        VAD->>App: INFERENCE_DONE (probability update)
+    end
+    Mic->>VAD: Silence Detected
+    VAD->>App: END_OF_SPEECH (full speech)
+```
+
+### Default Configuration
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `update_interval` | 0.1s | Time between INFERENCE_DONE events |
+| `min_speech_duration` | 0.3s | Minimum speech to trigger START |
+| `min_silence_duration` | 0.5s | Silence needed for END event |
+| `speech_threshold` | 0.85 | Probability to confirm speech |
+| `silence_threshold` | 0.15 | Probability to confirm silence |
+
+### Metrics Collection
+
+```python
+class VADMetrics:
+    timestamp: float         # Time of metric collection
+    idle_time: float         # Seconds since last speech activity
+    inference_duration_total: float  # Total processing time
+    inference_count: int     # Number of inferences
+    label: str               # VAD implementation ID
+```
+
+Metrics are emitted every `1 / update_interval` inferences (default: 10x/second).
 
 ### Usage Example
 
 ```python
-# Using WebRTC VAD implementation
-from livekit.agents.vad import WebRTCVAD
+from livekit.agents.vad import VADEventType, VAD
 
-vad = WebRTCVAD()
-async with vad.stream() as stream:
-    async for frame in audio_source:
-        async for event in stream.process_frame(frame):
-            if event.type == VADEventType.START:
-                print("Speech started")
-            elif event.type == VADEventType.END:
-                print("Speech ended after", event.timestamp, "seconds")
+class SpeechProcessor:
+    def __init__(self, vad: VAD):
+        self._vad_stream = vad.stream()
+        self._vad_stream.on("metrics_collected", self._on_metrics)
+        
+    async def process(self):
+        async for event in self._vad_stream:
+            if event.type == VADEventType.START_OF_SPEECH:
+                print(f"Speech started with {len(event.frames)} buffered frames")
+            elif event.type == VADEventType.INFERENCE_DONE:
+                print(f"Speech probability: {event.probability:.2f}")
+            elif event.type == VADEventType.END_OF_SPEECH:
+                audio = concatenate_frames(event.frames)
+                print(f"Full speech: {audio.duration:.2f}s")
+
+    def _on_metrics(self, metrics: VADMetrics):
+        print(f"VAD Efficiency: {metrics.inference_duration_total/metrics.inference_count:.3f}s/inference")
 ```
 
-### Configuration Tips
+### Processing Flow
 
-1. Adjust `min_silence_duration` to control how quickly speech ends are detected
-2. Higher `min_silence_threshold` makes detection more conservative
-3. Use 20-30ms frames for optimal performance
-4. Chain with STT for automatic speech segmentation
-5. Implement custom VAD by subclassing base class
+```mermaid
+sequenceDiagram
+    participant User as VoiceAgent
+    participant VAD
+    participant VADStream
+    participant MetricsMonitorTask
 
-### Integration Notes
+    User ->> VAD: Initialize VAD with capabilities
+    VAD ->> VADStream: Create a new VADStream instance
+    VADStream ->> VADStream: Start _main_task and _metrics_monitor_task
 
-1. Required for non-streaming STT implementations
-2. Used automatically by VoiceAgent when configured with [STT components](#speech-to-text-stt-implementation)
-3. Combine with turn detection for conversation management
-4. Multiple VAD implementations available:
-   - WebRTCVAD: CPU-efficient, traditional algorithm
-   - SileroVAD: Neural network-based, more accurate
-   - PyannoteVAD: Speaker-aware detection
+    loop Process Audio Frames
+        User ->> VADStream: push_frame(frame)
+        VADStream ->> VADStream: Process frame
+    end
+
+    User ->> VADStream: flush
+    VADStream ->> VADStream: Mark end of segment
+
+    User ->> VADStream: end_input
+    VADStream ->> VADStream: Close input channel
+
+    loop Collect Metrics
+        VADStream ->> MetricsMonitorTask: Collect metrics from events
+        MetricsMonitorTask ->> VADStream: Emit metrics_collected event
+    end
+
+    User ->> VADStream: aclose
+    VADStream ->> VADStream: Close stream and cancel tasks
+```
+
+
+### Best Practices
+
+1. **Buffer Management**
+```python
+# Pre-buffer 2-3 frames before START event
+vad = WebRTCVAD(
+    min_speech_duration=0.3,
+    pre_buffer_frames=2  # ~60ms at 30fps
+)
+```
+
+2. **Threshold Tuning**
+```python
+# Adjust for different environments
+vad.speech_threshold = 0.92  # Noisy environment
+vad.silence_threshold = 0.08  # Sensitive silence detection
+```
+
+3. **Performance Monitoring**
+```python
+def _on_metrics(metrics: VADMetrics):
+    if metrics.inference_duration_total > 0.1:
+        logger.warning(f"VAD latency high: {metrics.inference_duration_total:.3f}s")
+    if metrics.idle_time > 60:
+        logger.info("Entering low-power mode")
+```
+
+4. **Event Handling**
+```python
+async def handle_events(stream: VADStream):
+    async for event in stream:
+        if event.speech_duration > 5.0:
+            logger.warning("Long speech segment detected")
+            stream.flush()  # Reset buffers
+```
+
 
 
 
@@ -2503,115 +2585,9 @@ graph TD
 | Metric | Calculation | Description | Impact Factors |
 |--------|-------------|-------------|----------------|
 | **STT Latency** | `transcript_end - audio_start` | Full speech-to-text conversion time | Audio length, model complexity |
+| **TTFB (Time to First Byte)** | `first_audio_frame_time - text_start` | TTS response initiation delay | text length, model complexity  |
 | **TTFT (Time to First Token)** | `first_token_time - llm_start` | LLM response initiation delay | Model size, context length |
-| **TTLT (Time to Last Token)** | `last_token_time - llm_start` | Complete LLM response generation | Response length, model throughput |
-| **TTS Latency** | `first_audio_time - tts_start` | Text-to-speech synthesis delay | Voice complexity, streaming setup |
-| **Function Execution** | `fnc_end - fnc_start` | AI function processing duration | Network I/O, computation intensity |
-| **End-to-End Latency** | `output_start - input_start` | Total pipeline processing time | All component efficiencies |
-| **Error Rate** | `(errors / total_requests) * 100` | Failure percentage per component | Service stability, error handling |
 
-### Metric Collection Implementation
-
-```python
-# Simplified metric tracking implementation
-class MetricTracker:
-    def __init__(self):
-        self.metrics = defaultdict(list)
-        
-    def record(self, name: str, value: float):
-        self.metrics[name].append(value)
-        
-    def get_stats(self, name: str) -> dict:
-        values = self.metrics.get(name, [])
-        return {
-            "avg": np.mean(values),
-            "p90": np.percentile(values, 90),
-            "count": len(values)
-        }
-
-# Usage in processing pipeline
-async def stt_wrapper(audio_stream):
-    start = time.monotonic()
-    result = await stt.process(audio_stream)
-    utils.metrics.record("stt_latency", time.monotonic() - start)
-    return result
-```
-
-### Monitoring Best Practices
-
-1. **Alert Thresholds**
-```python
-# Example alert configuration
-ALERT_RULES = {
-    "stt_latency": {"warning": 1500, "critical": 2500},
-    "ttft": {"warning": 2000, "critical": 3500},
-    "error_rate": {"warning": 5.0, "critical": 10.0}
-}
-```
-
-2. **Dashboard Implementation**
-```python
-# Sample metrics export for monitoring systems
-def export_metrics():
-    return {
-        "stt": {
-            "latency": utils.metrics.get_stats("stt_latency"),
-            "error_rate": utils.error_counter.get_rate("stt")
-        },
-        "llm": {
-            "ttft": utils.metrics.get_stats("ttft"),
-            "token_rate": utils.metrics.get_stats("tokens_per_sec")
-        }
-    }
-```
-
-3. **Performance Optimization**
-```python
-# Identify slowest components
-def analyze_bottlenecks():
-    stats = {
-        "stt": utils.metrics.get_stats("stt_latency")["p90"],
-        "llm": utils.metrics.get_stats("ttft")["p90"],
-        "tts": utils.metrics.get_stats("tts_latency")["p90"]
-    }
-    return max(stats, key=stats.get)
-```
-
-### Specialized Metrics
-
-1. **Streaming Metrics**
-```python
-# Real-time throughput calculation
-class ThroughputCalculator:
-    def __init__(self):
-        self.token_count = 0
-        self.start_time = None
-        
-    def update(self, tokens: int):
-        if not self.start_time:
-            self.start_time = time.monotonic()
-        self.token_count += tokens
-        
-    @property
-    def tokens_per_sec(self):
-        return self.token_count / (time.monotonic() - self.start_time)
-```
-
-2. **Concurrency Metrics**
-```python
-# Track parallel processing capacity
-class ConcurrencyTracker:
-    def __init__(self):
-        self.active_tasks = 0
-        self.peak_tasks = 0
-        
-    def task_start(self):
-        self.active_tasks += 1
-        self.peak_tasks = max(self.peak_tasks, self.active_tasks)
-        
-    def task_end(self):
-        self.active_tasks -= 1
-```
 
 ### Metric Visualization
 
@@ -2625,6 +2601,119 @@ gantt
     LLM Processing : 1500, 3000
     TTS Synthesis : 3000, 4500
 ```
+
+### Initial Prompt Metrics Example
+
+This example breaks down what metrics are calculated during the initial prompt when someone joins the room that says:  
+
+`Initial Prompt: Hello from the weather station. Tell me your location to check the weather.`
+
+The text is chunked into two parts and sent to TTS.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant agent as Agent
+    participant VAD
+    participant EOU
+    participant STT as STT<br>Deepgram
+    participant LLM as LLM<br>OpenAI
+    participant FNC as Function
+    participant TTS as TTS<br>OpenAI
+    
+    Note over agent,TTS: Initial Prompt: Hello from the weather station. Tell me your location to check the weather.<br>Note: can get split into multip chuncks that will have same sequence_id
+    
+    agent->>agent: chunck text
+
+    Note over agent,TTS: ChunkA: Hello from the weather station.
+    agent->>+TTS: Hello from the weather station.
+    TTS->>agent: audio frame[0]
+    Note left of U: TTFB = time until agent receive frist audio frame
+    agent->>U: audio frame[0]
+    agent->>agent: audio_duration += audio frame[0].duration
+    TTS->>-agent: audio frame[1-N]
+    agent->>agent: audio_duration += audio frame[1-N].duration
+    agent->>U: audio frame[1-N]
+    Note left of U: audio_duration = sum of all audio frame durations
+
+
+    Note over agent,TTS: ChunkB: Tell me your location to check the weather.
+    agent->>+TTS: Tell me your location to check the weather.
+    TTS->>agent: audio frame[0]
+    Note left of U: TTFB = time until agent receive frist audio frame
+    TTS->>agent: audio frame[0]
+    agent->>agent: audio_duration += audio frame[0].duration
+    TTS->>-agent: audio frame[1-N]
+    agent->>agent: audio_duration += audio frame[1-N].duration
+    agent->>U: audio frame[1-N]
+    Note left of U: audio_duration = sum of all audio frame durations
+```
+
+## Metrics Round Trip (no function call)
+
+This example breaks down what metrics are calculated during a user request and the response they hear.
+
+**User:** `Can you hear me?`
+**Reponse:** `Yes, I can hear you! Please tell me the location you'd like the weather for.`
+
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant agent as Agent
+    participant STT as STT<br>Deepgram
+    participant LLM as LLM<br>OpenAI
+    participant FNC as Function
+    participant TTS as TTS<br>OpenAI
+    participant OpenAI
+    
+
+    U->>agent: Audio: Can you hear me?
+    STT->>+STT: Start STT duration timer
+    agent->>STT: audio frame[0]
+    Note over STT,LLM: event START_OF_SPEECH
+    Note over STT,LLM: event RECOGNITION_USAGE
+    Note over STT,LLM: event INTERIM_TRANSCRIPT
+    STT->>OpenAI: audio frame[0]
+
+    agent->>STT: audio frame[1-n]
+    STT->>OpenAI: audio frame[1-n]
+    Note over STT,LLM: event FINAL_TRANSCRIPT
+    OpenAI->>STT: Text: Can you hear me?
+    STT->>LLM: Text: Can you hear me?
+    Note over STT,LLM: END_OF_SPEECH
+
+
+    LLM->>+LLM: Start LLM duration timer
+    LLM->>OpenAI: Inference on text: "Can you hear me?"
+    OpenAI->>LLM: tokens
+    Note over LLM,OpenAI: TTFT = Time of transmit text until first tokens are returned
+
+    LLM->>TTS: LLM Response
+    OpenAI->>LLM: completion_tokens=20, prompt_tokens=184, total_tokens=204, cache_creation_input_tokens=0, cache_read_input_tokens=0
+    Note over LLM,OpenAi: LLM Duration = Time since LLM timer start
+    Note over LLM,OpenAi: tokens_per_second = completion_tokens / LLM duration
+    TTS->>TTS: Start TTS timer
+
+    
+    Note over agent,TTS: Text: Yes, I can hear you! Please tell me the location you'd like the weather for.
+    
+    agent->>agent: chunck text
+
+    Note over agent,TTS: ChunkA: Yes, I can hear you! Please tell me the location you'd like the weather for.
+    agent->>+TTS: Yes, I can hear you! Please tell me the location you'd like the weather for.
+    TTS->>agent: audio frame[0]
+    Note left of U: TTFB = time until agent receive frist audio frame
+    agent->>U: audio frame[0]
+    agent->>agent: audio_duration += audio frame[0].duration
+    TTS->>-agent: audio frame[1-N]
+    agent->>agent: audio_duration += audio frame[1-N].duration
+    agent->>U: audio frame[1-N]
+    Note left of U: audio_duration = sum of all audio frame durations
+    STT->>-agent: stt duration = time since STT process started (cumulative)
+```
+
+
 
 ### Best Practices
 
@@ -2644,7 +2733,7 @@ This section should be added after the [Error Handling Strategies](#error-handli
 ## TODO
 
 * when agents 1.0 is released replace `/blob/dev-1.0/` with `/blob/main/`
-* Add best practices (ie least network latency to major 3rd party components)
+* Add function calling impact on metric (`110_performance_monitoring.md`)
 * Add SIP info
 * add EOUMetrics[`transcription_delay`, `end_of_utterance_delay`]
 
