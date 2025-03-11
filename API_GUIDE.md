@@ -2653,8 +2653,8 @@ sequenceDiagram
 
 This example breaks down what metrics are calculated during a user request and the response they hear.
 
-**User:** `Can you hear me?`
-**Reponse:** `Yes, I can hear you! Please tell me the location you'd like the weather for.`
+**User:** `Can you hear me?`  
+**Reponse:** `Yes, I can hear you! Please tell me the location you'd like the weather for.`  
 
 
 ```mermaid
