@@ -73,6 +73,15 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
     - [Events](#events)
     - [Usage Example](#usage-example)
     - [Worker Management Tips](#worker-management-tips)
+- [LiveKit Agents CLI Documentation](#livekit-agents-cli-documentation)
+  - [Overview](#overview)
+  - [Available Commands](#available-commands)
+    - [`start`](#start)
+    - [`dev`](#dev)
+    - [`console`](#console)
+    - [`connect`](#connect)
+    - [`download-files`](#download-files)
+  - [Key Features](#key-features)
   - [Voice Activity Detection (VAD) Interface](#voice-activity-detection-vad-interface)
     - [Core Components](#core-components)
     - [Event Lifecycle](#event-lifecycle)
@@ -187,7 +196,7 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
 ## VoiceAgent Class 
 [source code](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/voice/voice_agent.py)
 
-The main class for handling voice interactions in a LiveKit room.
+The primary class for voice interactions with LiveKit agents.
 
 ### Initialization
 
@@ -262,8 +271,6 @@ sequenceDiagram
 - Resets counter for each new user utterance
 - When exceeded:
   - Current function chain is terminated
-  - Agent responds with "Unable to complete complex request"
-  - Error event `function_chain_too_long` is emitted
 
 **Recommended Settings:**
 | Use Case                | Recommended Value | Rationale                     |
@@ -993,6 +1000,88 @@ async def main():
 4. Implement health checks for long-running workers
 5. Handle SIGTERM/SIGINT for graceful shutdowns
 
+
+
+
+# LiveKit Agents CLI Documentation
+
+[source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/cli/cli.py)
+
+## Overview
+This code implements a command-line interface (CLI) for managing LiveKit agents. It provides commands to run workers in different modes, connect to rooms, and manage plugin dependencies. The CLI is built using Python's Click library.
+
+## Available Commands
+
+### `start`
+Start the worker in production mode.
+
+**Options**:
+| Option | Description | Default | Environment Variable |
+|--------|-------------|---------|----------------------|
+| `--log-level` | Logging level | INFO | - |
+| `--url` | LiveKit server/Cloud URL | - | LIVEKIT_URL |
+| `--api-key` | API key | - | LIVEKIT_API_KEY |
+| `--api-secret` | API secret | - | LIVEKIT_API_SECRET |
+| `--drain-timeout` | Graceful shutdown timeout (seconds) | 60 | - |
+
+### `dev`
+Start the worker in development mode with hot-reloading.
+
+**Options**:
+| Option | Description | Default | Environment Variable |
+|--------|-------------|---------|----------------------|
+| `--log-level` | Logging level | DEBUG | - |
+| `--url` | LiveKit server/Cloud URL | - | LIVEKIT_URL |
+| `--api-key` | API key | - | LIVEKIT_API_KEY |
+| `--api-secret` | API secret | - | LIVEKIT_API_SECRET |
+| `--asyncio-debug` | Enable asyncio debug | False | - |
+| `--watch` | Enable file watching | True | - |
+
+### `console`
+Start an interactive chat console.
+
+**Options**:
+| Option | Description | Environment Variable |
+|--------|-------------|----------------------|
+| `--url` | LiveKit server/Cloud URL | LIVEKIT_URL |
+| `--api-key` | API key | LIVEKIT_API_KEY |
+| `--api-secret` | API secret | LIVEKIT_API_SECRET |
+
+### `connect`
+Connect to a specific room directly.
+
+**Options**:
+| Option | Description | Default | Environment Variable |
+|--------|-------------|---------|----------------------|
+| `--log-level` | Logging level | DEBUG | - |
+| `--url` | LiveKit server/Cloud URL | - | LIVEKIT_URL |
+| `--api-key` | API key | - | LIVEKIT_API_KEY |
+| `--api-secret` | API secret | - | LIVEKIT_API_SECRET |
+| `--asyncio-debug` | Enable asyncio debug | False | - |
+| `--watch` | Enable file watching | True | - |
+| `--room` | Room name to connect to (required) | - | - |
+| `--participant-identity` | Participant identity | - | - |
+
+### `download-files`
+Download plugin dependency files.
+
+**Options**:
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--log-level` | Logging level | DEBUG |
+
+## Key Features
+- Multiple environment modes (production/development)
+- Hot-reloading in development mode
+- Interactive console mode
+- Direct room connection capability
+- Plugin dependency management
+- Graceful shutdown handling
+- Configurable logging levels
+- Environment variable support for credentials
+- File watching for development reloads
+
+The CLI uses environment variables for sensitive credentials by default, making it suitable for both local development and production deployments. The implementation handles signal interception for clean shutdowns and provides debugging endpoints when running in development mode.
 
 
 
@@ -2291,25 +2380,7 @@ TTFB measures the total time from when:
    - TTS synthesis
 3. Until first audio frame is emitted
 
-**Function Calling Impact:**
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant VAD
-    participant STT
-    participant LLM
-    participant FNC as Function
-    participant TTS
-    
-    U->>VAD: Speech Start
-    VAD->>STT: 300ms
-    STT->>LLM: 200ms
-    LLM->>FNC: Function Call (500ms)
-    FNC->>LLM: Result
-    LLM->>TTS: 400ms
-    TTS->>U: First Audio Frame
-    Note over LLM,FNC: TTFB = 300+200+500+400 = 1400ms
-```
+See [Core Metrics](#core-metrics) for detailed break dowan of calcualtion.
 
 ### Key Components Affecting TTFB
 

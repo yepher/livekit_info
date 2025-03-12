@@ -1,7 +1,7 @@
 ## VoiceAgent Class 
 [source code](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/voice/voice_agent.py)
 
-The main class for handling voice interactions in a LiveKit room.
+The primary class for voice interactions with LiveKit agents.
 
 ### Initialization
 
@@ -76,8 +76,6 @@ sequenceDiagram
 - Resets counter for each new user utterance
 - When exceeded:
   - Current function chain is terminated
-  - Agent responds with "Unable to complete complex request"
-  - Error event `function_chain_too_long` is emitted
 
 **Recommended Settings:**
 | Use Case                | Recommended Value | Rationale                     |
