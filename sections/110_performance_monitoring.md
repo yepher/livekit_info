@@ -160,5 +160,4 @@ sequenceDiagram
 6. Use dimensional tagging for advanced filtering
 7. Combine with distributed tracing for debugging
 
-This section should be added after the [Error Handling Strategies](#error-handling-strategies) section in the API guide.
 

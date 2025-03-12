@@ -148,4 +148,6 @@ stateDiagram-v2
 3. Implement proper error handling in entrypoint functions
 4. Use draining mode for graceful shutdowns during deployments
 5. Monitor worker status through the HTTP health check endpoint
-```
+
+
+
