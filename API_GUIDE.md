@@ -65,128 +65,33 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
   - [Key Configuration](#key-configuration)
   - [Security Architecture](#security-architecture)
   - [Example Providers](#example-providers)
-  - [Worker Class](#worker-class)
-    - [Initialization](#initialization)
-    - [Key Methods](#key-methods)
-      - [`start()`](#start)
-      - [`aclose()`](#aclose)
-    - [Events](#events)
-    - [Usage Example](#usage-example)
-    - [Worker Management Tips](#worker-management-tips)
-- [LiveKit Agents CLI Documentation](#livekit-agents-cli-documentation)
-  - [Overview](#overview)
-  - [Available Commands](#available-commands)
-    - [`start`](#start)
-    - [`dev`](#dev)
-    - [`console`](#console)
-    - [`connect`](#connect)
-    - [`download-files`](#download-files)
+- [LiveKit Worker Class Documentation](#livekit-worker-class-documentation)
+  - [Purpose](#purpose)
   - [Key Features](#key-features)
-  - [Voice Activity Detection (VAD) Interface](#voice-activity-detection-vad-interface)
-    - [Core Components](#core-components)
-    - [Event Lifecycle](#event-lifecycle)
-    - [Default Configuration](#default-configuration)
-    - [Metrics Collection](#metrics-collection)
-    - [Usage Example](#usage-example)
-    - [Processing Flow](#processing-flow)
-    - [Best Practices](#best-practices)
-  - [LLM (Language Model) Integration](#llm-language-model-integration)
-    - [Base Classes](#base-classes)
-    - [Key Components](#key-components)
-      - [Chat Context](#chat-context)
-      - [AI Function](#ai-function)
-    - [Function Execution Context](#function-execution-context)
-      - [Class Definition](#class-definition)
-      - [Key Properties](#key-properties)
-      - [Usage Example](#usage-example)
-      - [Context Capabilities](#context-capabilities)
-      - [Best Practices](#best-practices)
-    - [Usage Example](#usage-example)
-    - [Response Types](#response-types)
-    - [Best Practices](#best-practices)
-    - [Advanced Features](#advanced-features)
-    - [Key Performance Metrics](#key-performance-metrics)
-    - [Metrics Collection Example](#metrics-collection-example)
-    - [Internal Metrics Implementation](#internal-metrics-implementation)
-    - [TTFT Measurement Implementation](#ttft-measurement-implementation)
-    - [Optimization Techniques](#optimization-techniques)
-    - [TTFT Benchmarks](#ttft-benchmarks)
-    - [Monitoring & Alerting](#monitoring-alerting)
-    - [Best Practices](#best-practices)
-    - [TTFT vs TTFB Relationship](#ttft-vs-ttfb-relationship)
-  - [Chat Context Management](#chat-context-management)
-    - [Class Definition](#class-definition)
-    - [Message Types](#message-types)
-    - [Key Methods](#key-methods)
-    - [Usage Example](#usage-example)
-    - [Best Practices](#best-practices)
-    - [Advanced Features](#advanced-features)
-  - [Fallback Adapters](#fallback-adapters)
-    - [FallbackAdapter Class](#fallbackadapter-class)
-    - [Key Features](#key-features)
-    - [Supported Services](#supported-services)
-    - [Usage Example](#usage-example)
-    - [Configuration Tips](#configuration-tips)
-    - [Best Practices](#best-practices)
-    - [Monitoring Interface](#monitoring-interface)
-    - [Error Handling](#error-handling)
-  - [Audio Recognition Pipeline](#audio-recognition-pipeline)
-    - [Overview](#overview)
-    - [Key Components](#key-components)
-      - [1. Speech-to-Text (STT) Integration](#1-speech-to-text-stt-integration)
-      - [2. Voice Activity Detection (VAD)](#2-voice-activity-detection-vad)
-      - [3. Turn Detection Logic](#3-turn-detection-logic)
-    - [Lifecycle Management](#lifecycle-management)
-    - [Implementing Hooks with Decorators](#implementing-hooks-with-decorators)
-    - [Configuration Tips](#configuration-tips)
-    - [Common Use Cases](#common-use-cases)
-  - [Speech-to-Text (STT) Implementation](#speech-to-text-stt-implementation)
-    - [Core STT Interface](#core-stt-interface)
-      - [Speech Data Structure](#speech-data-structure)
-      - [Recognition Events](#recognition-events)
-    - [Streaming Recognition](#streaming-recognition)
-    - [Fallback Adapter Implementation](#fallback-adapter-implementation)
-      - [Usage Example](#usage-example)
-    - [Stream Adapter Implementation](#stream-adapter-implementation)
-      - [Processing Flow](#processing-flow)
-    - [Best Practices](#best-practices)
-    - [Configuration Guide](#configuration-guide)
-    - [Advanced Features](#advanced-features)
-    - [STT Metrics Collection](#stt-metrics-collection)
-      - [Key Metrics Fields](#key-metrics-fields)
-      - [Example Usage](#example-usage)
-      - [Metrics Flow Diagram](#metrics-flow-diagram)
-  - [Text-to-Speech (TTS) Implementation](#text-to-speech-tts-implementation)
-    - [Core TTS Interface](#core-tts-interface)
-      - [Synthesized Audio Structure](#synthesized-audio-structure)
-    - [Streaming Implementation](#streaming-implementation)
-    - [Fallback Adapter Implementation](#fallback-adapter-implementation)
-      - [Usage Example](#usage-example)
-    - [Stream Adapter Implementation](#stream-adapter-implementation)
-      - [Processing Flow:](#processing-flow)
-    - [Key Configuration Parameters](#key-configuration-parameters)
-    - [Best Practices](#best-practices)
-    - [Advanced Features](#advanced-features)
-    - [Monitoring Metrics](#monitoring-metrics)
-    - [Detailed TTFB Breakdown](#detailed-ttfb-breakdown)
-    - [Key Components Affecting TTFB](#key-components-affecting-ttfb)
-    - [Optimization Strategies](#optimization-strategies)
-    - [Function Calling Specifics](#function-calling-specifics)
-    - [Threshold Guidance](#threshold-guidance)
-    - [Cross-Component Impact](#cross-component-impact)
-    - [TTS Metrics Implementation](#tts-metrics-implementation)
-    - [Metrics Collection Example](#metrics-collection-example)
-    - [Metrics Flow with Adapters](#metrics-flow-with-adapters)
-    - [Best Practices for Metrics](#best-practices-for-metrics)
-    - [Configuration Additions](#configuration-additions)
-    - [Full Synthesis Flow](#full-synthesis-flow)
-  - [Performance Monitoring & Metrics](#performance-monitoring-metrics)
-    - [Core Metrics](#core-metrics)
-    - [Metric Visualization](#metric-visualization)
-    - [Initial Prompt Metrics Example](#initial-prompt-metrics-example)
-  - [Metrics Round Trip (no function call)](#metrics-round-trip-no-function-call)
-    - [Best Practices](#best-practices)
-  - [TODO](#todo)
+  - [Basic Usage](#basic-usage)
+  - [Configuration Options (WorkerOptions)](#configuration-options-workeroptions)
+  - [Key Flow Description:](#key-flow-description)
+    - [Initialization Sequence:](#initialization-sequence)
+    - [Job Handling Flow:](#job-handling-flow)
+    - [State Transitions:](#state-transitions)
+  - [Lifecycle Management](#lifecycle-management)
+  - [Best Practices](#best-practices)
+- [Using OpenAI LLM](#using-openai-llm)
+- [Set performance thresholds](#set-performance-thresholds)
+- [Create new context with system message](#create-new-context-with-system-message)
+- [Conversation flow](#conversation-flow)
+- [Trim to last 2 messages](#trim-to-last-2-messages)
+- [Configure STT with fallback](#configure-stt-with-fallback)
+- [Configure TTS with fallback](#configure-tts-with-fallback)
+- [Use in VoiceAgent](#use-in-voiceagent)
+- [Get current active service](#get-current-active-service)
+- [Get service health status](#get-service-health-status)
+- [Event listeners](#event-listeners)
+- [Example initialization](#example-initialization)
+- [Will automatically failover if primary fails](#will-automatically-failover-if-primary-fails)
+- [Automatically fails over if primary fails](#automatically-fails-over-if-primary-fails)
+- [Recommended time distribution](#recommended-time-distribution)
+- [Track function execution times](#track-function-execution-times)
 
 ---
 
@@ -910,96 +815,157 @@ flowchart TB
 
 
 
-## Worker Class
+# LiveKit Worker Class Documentation
 
 [source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/worker.py)
 
-Handles deployment and management of VoiceAgent instances across multiple LiveKit rooms.
+## Purpose
+The `Worker` class is the core component of the LiveKit Agents framework, designed to manage agent jobs and handle real-time communication with LiveKit servers. It acts as a long-running service that:
 
-### Initialization
+- Maintains WebSocket connections to LiveKit
+- Processes job assignments from the LiveKit backend
+- Manages job execution in separate processes/threads
+- Provides health monitoring and load balancing
+- Handles automatic reconnections and retries
 
-```python
-def __init__(
-    self,
-    *,
-    agent_factory: Callable[[rtc.Room], VoiceAgent | Awaitable[VoiceAgent]],
-    livekit_url: str,
-    api_key: str,
-    api_secret: str,
-    room_manager: Optional[RoomManager] = None,
-    worker_id: str = "voice-agent-worker",
-    max_connections: int = 100,
-    reconnect_timeout: float = 3.0,
-    **kwargs,
-) -> None
-```
+## Key Features
 
-**Key Parameters:**
-- `agent_factory`: Creates [VoiceAgent](#voiceagent-class) instances per room
-- `livekit_url`: LiveKit server URL (e.g.: wss://your-domain.livekit.cloud)
-- `api_key/secret`: LiveKit API credentials
-- `max_connections`: Maximum concurrent room connections
-- `reconnect_timeout`: Delay before reconnecting failed connections
+1. **Job Management**
+   - Spawns isolated processes/threads for each agent job
+   - Maintains a pool of pre-warmed processes for quick job startup
+   - Implements memory monitoring and limits for jobs
 
-### Key Methods
+2. **Cluster Coordination**
+   - Registers with LiveKit servers
+   - Reports worker status and load metrics
+   - Handles job assignment negotiation
+   - Implements draining mode for graceful shutdown
 
-#### `start()`
-```python
-async def start(self) -> None
-```
-Connects to LiveKit server and starts processing room connections.
+3. **Infrastructure**
+   - Built-in HTTP server for health checks
+   - CPU/memory monitoring
+   - Automatic reconnection logic
+   - Support for development vs production modes
 
-#### `aclose()`
-```python
-async def aclose(self) -> None
-```
-Gracefully shuts down all active connections and agents.
-
-### Events
-
-- `agent_created`: Emitted when a new agent is created
-  ```python
-  class AgentCreatedEvent:
-      room: rtc.Room
-      agent: VoiceAgent
-  ```
-
-### Usage Example
+## Basic Usage
 
 ```python
-async def agent_factory(room: rtc.Room) -> VoiceAgent:
-    agent = VoiceAgent(
-        instructions="You're a conference assistant",
-        stt=DeepgramSTT(),
-        llm=OpenAILlm(),
-        tts=ElevenLabsTTS()
-    )
-    # Customize agent per room
-    agent.userdata = {"room_name": room.name}
-    return agent
+from livekit.agents import Worker, WorkerOptions, JobContext
+
+async def entrypoint(ctx: JobContext):
+    """Your agent's main entrypoint"""
+    await ctx.connect()
+    # Implement agent logic here
 
 worker = Worker(
-    agent_factory=agent_factory,
-    livekit_url="wss://your.livekit.server",
-    api_key="your-key",
-    api_secret="your-secret"
+    WorkerOptions(
+        entrypoint_fnc=entrypoint,
+        agent_name="my-agent",
+        api_key="your_api_key",
+        api_secret="your_api_secret",
+        ws_url="wss://your.livekit.server"
+    )
 )
 
 async def main():
-    await worker.start()
-    # Run until interrupted
-    while True:
-        await asyncio.sleep(1)
+    await worker.run()
+
+asyncio.run(main())
 ```
 
-### Worker Management Tips
+## Configuration Options (WorkerOptions)
 
-1. Use agent_factory to customize agents per room/participant
-2. Handle rate limits in agent factory for large deployments
-3. Use room metadata to configure agent behavior
-4. Implement health checks for long-running workers
-5. Handle SIGTERM/SIGINT for graceful shutdowns
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `entrypoint_fnc` | Callable | Required | Main agent entrypoint function |
+| `agent_name` | str | "" | Unique identifier for explicit dispatch |
+| `worker_type` | WorkerType | ROOM | ROOM or PUBLISHER job type |
+| `permissions` | WorkerPermissions | Default permissions | Room join permissions |
+| `job_executor_type` | JobExecutorType | PROCESS | PROCESS or THREAD execution |
+| `load_threshold` | float | 0.75 (prod) | CPU load threshold for availability |
+| `max_retry` | int | 16 | Max connection retry attempts |
+| `num_idle_processes` | int | 3 (prod) | Pre-warmed process pool size |
 
+## Key Flow Description:
+
+### Initialization Sequence:
+
+```mermaid
+sequenceDiagram
+    participant W as Worker
+    participant LK as LiveKit Server
+    participant PP as Process Pool
+    
+    W->>PP: Initialize pool
+    W->>LK: Connect via WebSocket
+    LK->>W: Registration confirmation
+    W->>PP: Pre-warm processes
+```
+
+### Job Handling Flow:
+
+```mermaid
+sequenceDiagram
+    participant JD as Job Dispatcher
+    participant W as Worker
+    participant PP as Process Pool
+    participant JP as Job Process
+    
+    JD->>W: New job assignment
+    W->>PP: Request process
+    PP->>JP: Launch new job
+    JP->>W: Status updates
+    W->>JD: Job status reporting
+```
+
+### State Transitions:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Initializing
+    Initializing --> Connecting: Start
+    Connecting --> Registered: Success
+    Registered --> Running: Begin processing
+    Running --> Draining: Shutdown initiated
+    Draining --> Closed: Jobs completed
+    Closed --> [*]
+    
+    Registered --> Connecting: Connection lost
+    Running --> Connecting: Connection lost
+```
+
+
+## Lifecycle Management
+
+1. **Initialization**
+   - Validate configuration
+   - Start HTTP server
+   - Initialize process pool
+
+2. **Connection Phase**
+   - Establish WebSocket connection
+   - Register with LiveKit backend
+   - Begin health monitoring
+
+3. **Operation**
+   - Handle job assignments
+   - Spawn/manage job processes
+   - Report status updates
+   - Monitor resource usage
+
+4. **Shutdown**
+   - Drain active jobs
+   - Close network connections
+   - Clean up resources
+
+## Best Practices
+
+1. Use process-based execution (default) for better isolation
+2. Set appropriate memory limits for your agent's requirements
+3. Implement proper error handling in entrypoint functions
+4. Use draining mode for graceful shutdowns during deployments
+5. Monitor worker status through the HTTP health check endpoint
+```
 
 
 
@@ -1089,7 +1055,59 @@ The CLI uses environment variables for sensitive credentials by default, making 
 
 [source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/vad.py)
 
+Voice Activity Detection (VAD) is a fundamental component in audio processing systems that identifies speech segments within an audio stream.
+
 VAD is a requirement when an STT does not support streaming.
+
+### Default Configuration
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `activation_threshold` | 0.5 | Threshold to consider a frame as speech. |
+| `force_cpu` | True | Force the use of CPU for inference. |
+| `max_buffered_speech` | 60 | Maximum duration of speech to keep in the buffer |
+| `min_silence_duration` | 0.55s | Silence needed for END event |
+| `min_speech_duration` | 0.55s | Minimum speech to trigger START |
+| `padding_duration` | None | **(Deprecated)** Use `prefix_padding_duration` instead. |
+| `prefix_padding_duration` | 0.5 |Duration of padding to add to the beginning of each speech chunk. |
+| `sample_rate` | 16000 | Sample rate for the inference (only 8KHz and 16KHz are supported). |
+| `silence_threshold` | 0.15 | Probability to confirm silence |
+| `speech_threshold` | 0.85 | Probability to confirm speech |
+| `update_interval` | 0.32s | Time between INFERENCE_DONE events |
+
+### Processing Flow
+
+```mermaid
+sequenceDiagram
+    participant User as VoiceAgent
+    participant VAD
+    participant VADStream
+    participant MetricsMonitorTask
+
+    User ->> VAD: Initialize VAD with capabilities
+    VAD ->> VADStream: Create a new VADStream instance
+    VADStream ->> VADStream: Start _main_task and _metrics_monitor_task
+
+    loop Process Audio Frames
+        User ->> VADStream: push_frame(frame)
+        VADStream ->> VADStream: Process frame
+    end
+
+    User ->> VADStream: flush
+    VADStream ->> VADStream: Mark end of segment
+
+    User ->> VADStream: end_input
+    VADStream ->> VADStream: Close input channel
+
+    loop Collect Metrics
+        VADStream ->> MetricsMonitorTask: Collect metrics from events
+        MetricsMonitorTask ->> VADStream: Emit metrics_collected event
+    end
+
+    User ->> VADStream: aclose
+    VADStream ->> VADStream: Close stream and cancel tasks
+```
+
 
 ### Core Components
 
@@ -1103,7 +1121,7 @@ class VADEventType(Enum):
 class VADEvent:
     type: VADEventType
     samples_index: int         # Audio sample index (relative to inference rate)
-    timestamp: float           # Event time in seconds.monotonic()
+    timestamp: float           # Event time in seconds
     speech_duration: float     # Length of speech segment (default: 0.2-0.5s)
     silence_duration: float    # Silence before/after speech (default: 0.3-1.0s)
     frames: list[rtc.AudioFrame]  # Raw audio frames
@@ -1128,15 +1146,6 @@ sequenceDiagram
     VAD->>App: END_OF_SPEECH (full speech)
 ```
 
-### Default Configuration
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `update_interval` | 0.1s | Time between INFERENCE_DONE events |
-| `min_speech_duration` | 0.3s | Minimum speech to trigger START |
-| `min_silence_duration` | 0.5s | Silence needed for END event |
-| `speech_threshold` | 0.85 | Probability to confirm speech |
-| `silence_threshold` | 0.15 | Probability to confirm silence |
 
 ### Metrics Collection
 
@@ -1175,75 +1184,9 @@ class SpeechProcessor:
         print(f"VAD Efficiency: {metrics.inference_duration_total/metrics.inference_count:.3f}s/inference")
 ```
 
-### Processing Flow
-
-```mermaid
-sequenceDiagram
-    participant User as VoiceAgent
-    participant VAD
-    participant VADStream
-    participant MetricsMonitorTask
-
-    User ->> VAD: Initialize VAD with capabilities
-    VAD ->> VADStream: Create a new VADStream instance
-    VADStream ->> VADStream: Start _main_task and _metrics_monitor_task
-
-    loop Process Audio Frames
-        User ->> VADStream: push_frame(frame)
-        VADStream ->> VADStream: Process frame
-    end
-
-    User ->> VADStream: flush
-    VADStream ->> VADStream: Mark end of segment
-
-    User ->> VADStream: end_input
-    VADStream ->> VADStream: Close input channel
-
-    loop Collect Metrics
-        VADStream ->> MetricsMonitorTask: Collect metrics from events
-        MetricsMonitorTask ->> VADStream: Emit metrics_collected event
-    end
-
-    User ->> VADStream: aclose
-    VADStream ->> VADStream: Close stream and cancel tasks
-```
 
 
-### Best Practices
 
-1. **Buffer Management**
-```python
-# Pre-buffer 2-3 frames before START event
-vad = WebRTCVAD(
-    min_speech_duration=0.3,
-    pre_buffer_frames=2  # ~60ms at 30fps
-)
-```
-
-2. **Threshold Tuning**
-```python
-# Adjust for different environments
-vad.speech_threshold = 0.92  # Noisy environment
-vad.silence_threshold = 0.08  # Sensitive silence detection
-```
-
-3. **Performance Monitoring**
-```python
-def _on_metrics(metrics: VADMetrics):
-    if metrics.inference_duration_total > 0.1:
-        logger.warning(f"VAD latency high: {metrics.inference_duration_total:.3f}s")
-    if metrics.idle_time > 60:
-        logger.info("Entering low-power mode")
-```
-
-4. **Event Handling**
-```python
-async def handle_events(stream: VADStream):
-    async for event in stream:
-        if event.speech_duration > 5.0:
-            logger.warning("Long speech segment detected")
-            stream.flush()  # Reset buffers
-```
 
 
 
