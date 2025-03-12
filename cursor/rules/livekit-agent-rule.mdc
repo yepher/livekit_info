@@ -45,7 +45,6 @@ This is a a summary Agent >=1.0 key changes from previous versions. If any of th
 * `VoiceAgent` can use `instruction` or an `AgentTask` but generally `AgentTask` should be prefferd now
 * `@agent.on` no longer exists. Now override `AgentTask` to receive hooks like [`on_enter`, `on_exit`, and `on_end_of_turn`]
 * LLM, STT, TTS, and VAD
-* `def prewarm(proc: JobProcess)` was deleted and should not be used.
 
 ## Minimal Voice Agent
 
