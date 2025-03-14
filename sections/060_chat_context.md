@@ -8,7 +8,7 @@ Core class for managing conversation history and function calling state.
 
 ```python
 class ChatContext:
-    def __init__(self, messages: list[ChatMessage], functions: list[AIFunction]):
+    def __init__(self, messages: list[ChatMessage], functions: list[FunctionTool]):
         self.messages = messages
         self.functions = functions
 

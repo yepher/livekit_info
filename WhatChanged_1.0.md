@@ -47,7 +47,7 @@ Check the updated `livekit-agents/livekit/agents/__init__.py` for the new export
 	*	New files like `agent_worker.py`, `avatar_runner.py`, and `dispatcher.py` show updated patterns for:
 	*	Connecting to the LiveKit room.
 	*	Creating a worker that streams audio and video.
-	*	Using the new data sinks (for example, DataStreamAudioSink).
+	*	Using the new data sinks (for example, DataStreamAudioOutput).
 	*	Action: Compare your current agent’s connection and streaming logic with these updated examples to spot differences.
 	*	Minimal and Other Worker Examples:
 	*	Review changes in the `minimal_worker.py` and other example files to update how you instantiate and start your AgentSession or any other agent type.

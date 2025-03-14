@@ -27,7 +27,7 @@ sequenceDiagram
     
     A->>R: Connect to LiveKit Room
     A->>S: Connect via LiveKit DataChannel (pass Room info and JWT)
-    A->>S: Stream audio via DataStreamAudioSink
+    A->>S: Stream audio via DataStreamAudioOutput
     S->>R: Publish synchronized media tracks
     loop Real-time Processing
         A->>S: Continuous audio frames
@@ -39,11 +39,11 @@ sequenceDiagram
 
 1. **Audio Streaming Setup**
 ```python
-from livekit.agents.voice.avatar import DataStreamAudioSink
+from livekit.agents.voice.avatar import DataStreamAudioOutput
 
 class AgentHandler:
     def __init__(self, room: rtc.Room, service_identity: str):
-        self._audio_sink = DataStreamAudioSink(room, destination_identity=service_identity)
+        self._audio_sink = DataStreamAudioOutput(room, destination_identity=service_identity)
         
     async def handle_user_audio(self, frame: rtc.AudioFrame):
         await self._audio_sink.capture_frame(frame)

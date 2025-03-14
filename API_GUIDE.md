@@ -679,7 +679,7 @@ sequenceDiagram
     
     A->>R: Connect to LiveKit Room
     A->>S: Connect via LiveKit DataChannel (pass Room info and JWT)
-    A->>S: Stream audio via DataStreamAudioSink
+    A->>S: Stream audio via DataStreamAudioOutput
     S->>R: Publish synchronized media tracks
     loop Real-time Processing
         A->>S: Continuous audio frames
@@ -691,11 +691,11 @@ sequenceDiagram
 
 1. **Audio Streaming Setup**
 ```python
-from livekit.agents.voice.avatar import DataStreamAudioSink
+from livekit.agents.voice.avatar import DataStreamAudioOutput
 
 class AgentHandler:
     def __init__(self, room: rtc.Room, service_identity: str):
-        self._audio_sink = DataStreamAudioSink(room, destination_identity=service_identity)
+        self._audio_sink = DataStreamAudioOutput(room, destination_identity=service_identity)
         
     async def handle_user_audio(self, frame: rtc.AudioFrame):
         await self._audio_sink.capture_frame(frame)
@@ -1183,7 +1183,7 @@ class LLM(ABC):
         self,
         *,
         chat_ctx: ChatContext,
-        fnc_ctx: list[AIFunction],
+        tools: list[FunctionTool],
         **kwargs,
     ) -> AsyncContextManager[AsyncIterable[ChatChunk]]:
         """Start a chat completion stream"""
@@ -1204,18 +1204,18 @@ class RealtimeModel(ABC):
 ```python
 class ChatContext:
     messages: list[ChatMessage]  # Conversation history
-    functions: list[AIFunction]  # Available functions
+    functions: list[FunctionTool]  # Available functions
 ```
 
 #### AI Function
 ```python
-class AIFunction:
+class FunctionTool:
     name: str
     description: str
     parameters: dict  # JSON Schema
 
     @abstractmethod
-    async def execute(self, ctx: FunctionContext) -> Any:
+    async def execute(self, ctx: ToolContext) -> Any:
         """Implement function logic"""
 ```
 
@@ -1226,12 +1226,12 @@ Provides runtime context for AI function execution, including parsed parameters 
 #### Class Definition
 
 ```python
-class FunctionContext:
+class ToolContext:
     def __init__(
         self,
         values: dict[str, Any],
         agent: AgentSession,
-        function_tools: list[AIFunction],
+        function_tools: list[FunctionTool],
         stt: stt.STT | None,
         tts: tts.TTS | None,
         llm: llm.LLM | None,
@@ -1257,7 +1257,7 @@ class FunctionContext:
 #### Usage Example
 
 ```python
-class NavigateFunction(llm.AIFunction):
+class NavigateFunction(llm.FunctionTool):
     def __init__(self):
         super().__init__(
             name="navigate",
@@ -1271,7 +1271,7 @@ class NavigateFunction(llm.AIFunction):
             }
         )
 
-    async def execute(self, ctx: FunctionContext) -> str:
+    async def execute(self, ctx: ToolContext) -> str:
         direction = ctx.values["direction"]
         distance = ctx.values["distance"]
         
@@ -1290,7 +1290,7 @@ class NavigateFunction(llm.AIFunction):
 2. **Service Access**: Direct usage of STT/TTS/LLM services
 3. **State Management**: Modify agent state via `ctx.agent`
 4. **Function Chaining**: Call other AI functions from context
-5. **Error Handling**: Raise `AIError` for function-specific errors
+5. **Error Handling**: Raise `ToolError` for function-specific errors
 
 #### Best Practices
 
@@ -1311,7 +1311,7 @@ class NavigateFunction(llm.AIFunction):
 ```python
 from livekit.agents import llm
 
-class WeatherFunction(llm.AIFunction):
+class WeatherFunction(llm.FunctionTool):
     def __init__(self):
         super().__init__(
             name="get_weather",
@@ -1324,7 +1324,7 @@ class WeatherFunction(llm.AIFunction):
             }
         )
 
-    async def execute(self, ctx: FunctionContext) -> str:
+    async def execute(self, ctx: ToolContext) -> str:
         location = ctx.values.get("location")
         return f"Weather in {location}: Sunny, 22°C"
 
@@ -1332,7 +1332,7 @@ class WeatherFunction(llm.AIFunction):
 from livekit.agents.llm import OpenAILlm
 
 llm = OpenAILlm(api_key="your-key")
-async with llm.chat(chat_ctx=chat_context, fnc_ctx=[WeatherFunction()]) as stream:
+async with llm.chat(chat_ctx=chat_context, tools=[WeatherFunction()]) as stream:
     async for chunk in stream:
         print("Received:", chunk.text)
 ```
@@ -1540,7 +1540,7 @@ Core class for managing conversation history and function calling state.
 
 ```python
 class ChatContext:
-    def __init__(self, messages: list[ChatMessage], functions: list[AIFunction]):
+    def __init__(self, messages: list[ChatMessage], functions: list[FunctionTool]):
         self.messages = messages
         self.functions = functions
 
