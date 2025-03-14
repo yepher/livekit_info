@@ -1,5 +1,5 @@
 ## AgentSession Class 
-[source code](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/voice/voice_agent.py)
+[source code](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/voice/agent_session.py)
 
 The primary class for voice interactions with LiveKit agents.
 
