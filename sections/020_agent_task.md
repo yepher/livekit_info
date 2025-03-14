@@ -9,7 +9,7 @@ You can chain multiple `Agent` together to form a flow of AI logic.
 1. **Initialization Parameters**
    - `instructions`: System prompt defining agent personality/behavior
    - `chat_ctx`: Chat context management
-   - `ai_functions`: List of available AI functions
+   - `function_tools`: List of available AI functions
    - Speech Processing:
      - `stt`: Speech-to-Text engine
      - `tts`: Text-to-Speech engine
@@ -55,7 +55,7 @@ class CustomerSupportTask(Agent):
         # to the LLM.
         print("on_end_of_turn: " + new_message)
 
-    @llm.ai_function
+    @llm.function_tool
     async def transfer_to_human(self, context):
         # Custom AI function for transfers
         return HumanAgent(), "Transferring to human agent"
@@ -83,7 +83,7 @@ class CustomerSupportTask(Agent):
    ```
 
 4. **AI Functions**
-   - Annotate methods with `@llm.ai_function`
+   - Annotate methods with `@llm.function_tool`
    - Enable natural language triggering of backend logic
    - Handle context-aware operations like transfers
 

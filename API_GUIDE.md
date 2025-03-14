@@ -560,7 +560,7 @@ You can chain multiple `Agent` together to form a flow of AI logic.
 1. **Initialization Parameters**
    - `instructions`: System prompt defining agent personality/behavior
    - `chat_ctx`: Chat context management
-   - `ai_functions`: List of available AI functions
+   - `function_tools`: List of available AI functions
    - Speech Processing:
      - `stt`: Speech-to-Text engine
      - `tts`: Text-to-Speech engine
@@ -606,7 +606,7 @@ class CustomerSupportTask(Agent):
         # to the LLM.
         print("on_end_of_turn: " + new_message)
 
-    @llm.ai_function
+    @llm.function_tool
     async def transfer_to_human(self, context):
         # Custom AI function for transfers
         return HumanAgent(), "Transferring to human agent"
@@ -634,7 +634,7 @@ class CustomerSupportTask(Agent):
    ```
 
 4. **AI Functions**
-   - Annotate methods with `@llm.ai_function`
+   - Annotate methods with `@llm.function_tool`
    - Enable natural language triggering of backend logic
    - Handle context-aware operations like transfers
 
@@ -1231,14 +1231,14 @@ class FunctionContext:
         self,
         values: dict[str, Any],
         agent: AgentSession,
-        ai_functions: list[AIFunction],
+        function_tools: list[AIFunction],
         stt: stt.STT | None,
         tts: tts.TTS | None,
         llm: llm.LLM | None,
     ):
         self.values = values  # Parsed function arguments
         self.agent = agent    # Parent AgentSession instance
-        self.ai_functions = ai_functions  # Available functions
+        self.function_tools = function_tools  # Available functions
         self.stt = stt        # Speech-to-text service
         self.tts = tts        # Text-to-speech service
         self.llm = llm        # Language model
@@ -1250,7 +1250,7 @@ class FunctionContext:
 |-----------------|----------------------------------------------|
 | `values`        | Dictionary of parsed function arguments      |
 | `agent`         | AgentSession instance for state management     |
-| `ai_functions`  | List of available AI functions               |
+| `function_tools`  | List of available AI functions               |
 | `stt/tts/llm`   | Access to configured speech services         |
 |                 | May be None if not configured               |
 
@@ -2314,7 +2314,7 @@ See [Core Metrics](#core-metrics) for detailed break dowan of calcualtion.
 
 1. **Parallel Function Execution** (when safe):
 ```python
-@ai_function
+@function_tool
 async def get_weather(ctx):
     # Execute I/O operations concurrently
     forecast, news = await asyncio.gather(
@@ -2371,7 +2371,7 @@ def log_function(fn):
     return wrapper
 
 @log_function
-@ai_function
+@function_tool
 async def example_function(ctx):
     ...
 ```
