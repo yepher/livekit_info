@@ -10,7 +10,7 @@ def __init__(
     self,
     *,
     instructions: str | None = None,
-    task: NotGivenOr[AgentTask] = NOT_GIVEN,
+    task: NotGivenOr[Agent] = NOT_GIVEN,
     turn_detector: NotGivenOr[_TurnDetector] = NOT_GIVEN,
     stt: NotGivenOr[stt.STT] = NOT_GIVEN,
     vad: NotGivenOr[vad.VAD] = NOT_GIVEN,
@@ -27,9 +27,9 @@ def __init__(
 
 **Key Parameters:**
 - `instructions`: Natural language instructions for the agent
-    -  Required if [`task`](#agenttask-class) is not provided
-    -  Ignored if [`task`](#agenttask-class) is provided
-- [`task`](#agenttask-class): Preconfigured [AgentTask](#agenttask-class) to use
+    -  Required if [`task`](#agent-class) is not provided
+    -  Ignored if [`task`](#agent-class) is provided
+- [`task`](#agent-class): Preconfigured [Agent](#agent-class) to use
 - Components: [STT](#speech-to-text-stt-implementation), [TTS](#text-to-speech-tts-implementation), [LLM](#llm-language-model-integration), [VAD](#vad-voice-activity-detection) - provide implementations for speech processing
 - `allow_interruptions`: Whether user speech interrupts agent speech; Default `True`
 - `min_interruption_duration`: Minimum duration in seconds to consider an interruption valid; Default `0.5` seconds
@@ -119,7 +119,7 @@ This parameter works in conjunction with:
 | `vad`             | Voice activity detector                      |
 | `room_io`         | Manages [room input/output](#room-inputoutput-management)                 |
 | `current_speech`  | Currently active SpeechHandle if speaking    |
-| `current_task`    | Currently active AgentTask                   |
+| `current_task`    | Currently active Agent                   |
 
 ### Main Methods
 
@@ -168,7 +168,7 @@ Interrupts current agent speech.
 
 #### `update_task()`
 ```python
-def update_task(self, task: AgentTask) -> None
+def update_task(self, task: Agent) -> None
 ```
 Updates the current agent task.
 

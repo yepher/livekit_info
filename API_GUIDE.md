@@ -41,7 +41,7 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
       - [metrics_collected](#metrics_collected)
       - [conversation_item_added](#conversation_item_added)
     - [Typical Event Handling Pattern](#typical-event-handling-pattern)
-- [LiveKit AgentTask Documentation](#livekit-agenttask-documentation)
+- [LiveKit Agent Documentation](#livekit-agent-documentation)
   - [Overview](#overview)
   - [Key Components](#key-components)
   - [Usage Example](#usage-example)
@@ -200,7 +200,7 @@ def __init__(
     self,
     *,
     instructions: str | None = None,
-    task: NotGivenOr[AgentTask] = NOT_GIVEN,
+    task: NotGivenOr[Agent] = NOT_GIVEN,
     turn_detector: NotGivenOr[_TurnDetector] = NOT_GIVEN,
     stt: NotGivenOr[stt.STT] = NOT_GIVEN,
     vad: NotGivenOr[vad.VAD] = NOT_GIVEN,
@@ -217,9 +217,9 @@ def __init__(
 
 **Key Parameters:**
 - `instructions`: Natural language instructions for the agent
-    -  Required if [`task`](#agenttask-class) is not provided
-    -  Ignored if [`task`](#agenttask-class) is provided
-- [`task`](#agenttask-class): Preconfigured [AgentTask](#agenttask-class) to use
+    -  Required if [`task`](#agent-class) is not provided
+    -  Ignored if [`task`](#agent-class) is provided
+- [`task`](#agent-class): Preconfigured [Agent](#agent-class) to use
 - Components: [STT](#speech-to-text-stt-implementation), [TTS](#text-to-speech-tts-implementation), [LLM](#llm-language-model-integration), [VAD](#vad-voice-activity-detection) - provide implementations for speech processing
 - `allow_interruptions`: Whether user speech interrupts agent speech; Default `True`
 - `min_interruption_duration`: Minimum duration in seconds to consider an interruption valid; Default `0.5` seconds
@@ -309,7 +309,7 @@ This parameter works in conjunction with:
 | `vad`             | Voice activity detector                      |
 | `room_io`         | Manages [room input/output](#room-inputoutput-management)                 |
 | `current_speech`  | Currently active SpeechHandle if speaking    |
-| `current_task`    | Currently active AgentTask                   |
+| `current_task`    | Currently active Agent                   |
 
 ### Main Methods
 
@@ -358,7 +358,7 @@ Interrupts current agent speech.
 
 #### `update_task()`
 ```python
-def update_task(self, task: AgentTask) -> None
+def update_task(self, task: Agent) -> None
 ```
 Updates the current agent task.
 
@@ -549,12 +549,12 @@ This shows practical patterns for receiving and handling events in a voice agent
 
 
 
-# LiveKit AgentTask Documentation
+# LiveKit Agent Documentation
 
 ## Overview
-The `AgentTask` class is a core component of the LiveKit Voice Agent framework, designed to create conversational AI agents that can handle voice interactions. It provides a structured way to define agent behavior, process audio input, generate responses, and manage conversation flow.
+The `Agent` class is a core component of the LiveKit Voice Agent framework, designed to create conversational AI agents that can handle voice interactions. It provides a structured way to define agent behavior, process audio input, generate responses, and manage conversation flow.
 
-You can chain multiple `AgentTask` together to form a flow of AI logic.
+You can chain multiple `Agent` together to form a flow of AI logic.
 
 ## Key Components
 1. **Initialization Parameters**
@@ -577,10 +577,10 @@ You can chain multiple `AgentTask` together to form a flow of AI logic.
 ## Usage Example
 
 ```python
-from livekit.agents.voice import AgentTask
+from livekit.agents.voice import Agent
 from livekit.plugins import deepgram, openai, cartesia
 
-class CustomerSupportTask(AgentTask):
+class CustomerSupportTask(Agent):
     def __init__(self):
         super().__init__(
             instructions="You are a helpful customer support agent...",
@@ -609,7 +609,7 @@ class CustomerSupportTask(AgentTask):
     @llm.ai_function
     async def transfer_to_human(self, context):
         # Custom AI function for transfers
-        return HumanAgentTask(), "Transferring to human agent"
+        return HumanAgent(), "Transferring to human agent"
 ```
 
 ## Workflow
@@ -646,7 +646,7 @@ class CustomerSupportTask(AgentTask):
 - **Async Support**: Full async/await compatibility
 
 ## Conclusion
-The AgentTask framework provides a powerful abstraction for building voice-enabled AI agents. By implementing the provided hooks and leveraging the processing pipeline, developers can create sophisticated conversation flows while maintaining clean separation between components.
+The Agent framework provides a powerful abstraction for building voice-enabled AI agents. By implementing the provided hooks and leveraging the processing pipeline, developers can create sophisticated conversation flows while maintaining clean separation between components.
 
 
 
@@ -1394,7 +1394,7 @@ class LLMMetrics:
 ```python
 from livekit.agents.metrics import LLMMetrics
 
-class AlloyTask(AgentTask):
+class AlloyTask(Agent):
     """
     This is a basic example that demonstrates the use of LLM metrics.
     """
@@ -2096,7 +2096,7 @@ class STTMetrics:
 ```python
 from livekit.agents.metrics import STTMetrics
 
-class AlloyTask(AgentTask):
+class AlloyTask(Agent):
     """
     This is a basic example that demonstrates the use of STT metrics.
     """
@@ -2426,7 +2426,7 @@ class TTSMetrics:
 ### Metrics Collection Example
 
 ```python
-class AlloyTask(AgentTask):
+class AlloyTask(Agent):
     """
     This is a basic example that demonstrates the use of TTS metrics.
     """

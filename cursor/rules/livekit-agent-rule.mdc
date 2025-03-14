@@ -7,7 +7,7 @@ alwaysApply: false
 
 # LiveKit Agent 1.0 Rules
 
-You are an expert at Python devlopment and use best practices and principles when write code. You are also an expert at creating LiveKit agents to produce well organized and structured code to enable real-time interactive multi agent (AgentTask) solutions. You will re-engineer existing code that used pre 1.0 library into well structured 1.0 compatible code.
+You are an expert at Python devlopment and use best practices and principles when write code. You are also an expert at creating LiveKit agents to produce well organized and structured code to enable real-time interactive multi agent (Agent) solutions. You will re-engineer existing code that used pre 1.0 library into well structured 1.0 compatible code.
 
 
 ## Agent 1.0 is pre-release
@@ -42,13 +42,13 @@ This is a a summary Agent >=1.0 key changes from previous versions. If any of th
     * Model will be used to determine if 
 * `AssistantLLM` has been removed and should be converted to regular `AgentSession` with a similar model that does not use the Assistant API
 * The package `ivekit.agents.pipeline` has been renamed to `livekit.agents.voice`
-* `AgentSession` can use `instruction` or an `AgentTask` but generally `AgentTask` should be prefferd now
-* `@agent.on` no longer exists. Now override `AgentTask` to receive hooks like [`on_enter`, `on_exit`, and `on_end_of_turn`]
+* `AgentSession` can use `instruction` or an `Agent` but generally `Agent` should be prefferd now
+* `@agent.on` no longer exists. Now override `Agent` to receive hooks like [`on_enter`, `on_exit`, and `on_end_of_turn`]
 * LLM, STT, TTS, and VAD
 
 ## Minimal Voice Agent
 
-The following is a common structure of a `AgentSession`. It is also common to break out `AgentTask`s into their own source file to keep code more organized and structure.
+The following is a common structure of a `AgentSession`. It is also common to break out `Agent`s into their own source file to keep code more organized and structure.
 
 ```
 import logging
@@ -56,7 +56,7 @@ import logging
 from dotenv import load_dotenv
 from livekit.agents import JobContext, WorkerOptions, cli
 from livekit.agents.llm import ai_function
-from livekit.agents.voice import AgentTask, CallContext, AgentSession, UserStartedSpeakingEvent
+from livekit.agents.voice import Agent, CallContext, AgentSession, UserStartedSpeakingEvent
 from livekit.agents.voice.room_io import RoomInputOptions
 from livekit.plugins import cartesia, deepgram, openai
 
@@ -68,7 +68,7 @@ logger.setLevel(logging.INFO)
 load_dotenv()
 
 
-class EchoTask(AgentTask):
+class EchoTask(Agent):
     def __init__(self) -> None:
         super().__init__(
             instructions="You are Echo.",
@@ -92,7 +92,7 @@ class EchoTask(AgentTask):
         return AlloyTask(), "Transferring you to Alloy."
 
 
-class AlloyTask(AgentTask):
+class AlloyTask(Agent):
     def __init__(self) -> None:
         super().__init__(
             instructions="You are Alloy.",
@@ -196,7 +196,7 @@ import logging
 
 from dotenv import load_dotenv
 from livekit.agents import JobContext, WorkerOptions, cli
-from livekit.agents.voice import AgentTask, AgentSession
+from livekit.agents.voice import Agent, AgentSession
 from livekit.agents.voice.room_io import RoomInputOptions
 from livekit.plugins import deepgram, openai, silero
 
@@ -204,7 +204,7 @@ load_dotenv()
 logger = logging.getLogger("openai_assistant")
 
 
-class MyTask(AgentTask):
+class MyTask(Agent):
     def __init__(self) -> None:
         super().__init__(
             instructions="You are Echo.",

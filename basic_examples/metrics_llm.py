@@ -4,7 +4,7 @@ import asyncio
 from dotenv import load_dotenv
 from livekit.agents import JobContext, WorkerOptions, cli
 from livekit.agents.metrics import LLMMetrics
-from livekit.agents.voice import AgentTask, AgentSession
+from livekit.agents.voice import Agent, AgentSession
 from livekit.agents.voice.room_io import RoomInputOptions
 from livekit.plugins import cartesia, deepgram, openai
 
@@ -16,7 +16,7 @@ logger.setLevel(logging.INFO)
 load_dotenv()
 
 
-class AlloyTask(AgentTask):
+class AlloyTask(Agent):
     """
     This is a basic example that demonstrates the use of LLM metrics.
     """

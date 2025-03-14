@@ -1,9 +1,9 @@
-# LiveKit AgentTask Documentation
+# LiveKit Agent Documentation
 
 ## Overview
-The `AgentTask` class is a core component of the LiveKit Voice Agent framework, designed to create conversational AI agents that can handle voice interactions. It provides a structured way to define agent behavior, process audio input, generate responses, and manage conversation flow.
+The `Agent` class is a core component of the LiveKit Voice Agent framework, designed to create conversational AI agents that can handle voice interactions. It provides a structured way to define agent behavior, process audio input, generate responses, and manage conversation flow.
 
-You can chain multiple `AgentTask` together to form a flow of AI logic.
+You can chain multiple `Agent` together to form a flow of AI logic.
 
 ## Key Components
 1. **Initialization Parameters**
@@ -26,10 +26,10 @@ You can chain multiple `AgentTask` together to form a flow of AI logic.
 ## Usage Example
 
 ```python
-from livekit.agents.voice import AgentTask
+from livekit.agents.voice import Agent
 from livekit.plugins import deepgram, openai, cartesia
 
-class CustomerSupportTask(AgentTask):
+class CustomerSupportTask(Agent):
     def __init__(self):
         super().__init__(
             instructions="You are a helpful customer support agent...",
@@ -58,7 +58,7 @@ class CustomerSupportTask(AgentTask):
     @llm.ai_function
     async def transfer_to_human(self, context):
         # Custom AI function for transfers
-        return HumanAgentTask(), "Transferring to human agent"
+        return HumanAgent(), "Transferring to human agent"
 ```
 
 ## Workflow
@@ -95,4 +95,4 @@ class CustomerSupportTask(AgentTask):
 - **Async Support**: Full async/await compatibility
 
 ## Conclusion
-The AgentTask framework provides a powerful abstraction for building voice-enabled AI agents. By implementing the provided hooks and leveraging the processing pipeline, developers can create sophisticated conversation flows while maintaining clean separation between components.
+The Agent framework provides a powerful abstraction for building voice-enabled AI agents. By implementing the provided hooks and leveraging the processing pipeline, developers can create sophisticated conversation flows while maintaining clean separation between components.

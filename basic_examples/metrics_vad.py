@@ -3,7 +3,7 @@ import logging
 import asyncio
 from dotenv import load_dotenv
 from livekit.agents import JobContext, WorkerOptions, cli, vad
-from livekit.agents.voice import AgentTask, AgentSession
+from livekit.agents.voice import Agent, AgentSession
 from livekit.agents.voice.room_io import RoomInputOptions
 from livekit.plugins import cartesia, deepgram, openai, silero
 
@@ -14,7 +14,7 @@ load_dotenv()
 
 
 
-class AlloyTask(AgentTask):
+class AlloyTask(Agent):
     def __init__(self) -> None:
         silero_vad = silero.VAD.load()
         super().__init__(
