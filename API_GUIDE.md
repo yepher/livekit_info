@@ -15,6 +15,8 @@ API guide for [Agents 1.0](https://github.com/livekit/agents/tree/dev-1.0)
 
 See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6ebOhQ/65PClrBHjc0) cross linking drawings
 
+[Cursor Rules](/cursor/rules)
+
 **Table Of Contnets**
 
 - [Voice Agent API Guide](#voice-agent-api-guide)
@@ -189,7 +191,7 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
 
 
 ## AgentSession Class 
-[source code](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/voice/voice_agent.py)
+[source code](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/voice/agent_session.py)
 
 The primary class for voice interactions with LiveKit agents.
 
