@@ -108,8 +108,8 @@ primary_tts = tts.ElevenLabsTTS()
 backup_tts = tts.AzureTTS()
 tts_adapter = FallbackAdapter(primary_tts, [backup_tts])
 
-# Use in VoiceAgent
-agent = VoiceAgent(
+# Use in AgentSession
+agent = AgentSession(
     stt=stt_adapter,
     tts=tts_adapter,
     llm=OpenAILlm()

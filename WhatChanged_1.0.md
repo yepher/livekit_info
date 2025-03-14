@@ -21,7 +21,7 @@ This guide summarizes the major updates in the Agents 1.0 branch and provides st
 
 with:
 
-`from livekit.agents.voice import VoiceAgent, SomeClass`
+`from livekit.agents.voice import AgentSession, SomeClass`
 
 
 Check the updated `livekit-agents/livekit/agents/__init__.py` for the new export list.   ￼
@@ -50,7 +50,7 @@ Check the updated `livekit-agents/livekit/agents/__init__.py` for the new export
 	*	Using the new data sinks (for example, DataStreamAudioSink).
 	*	Action: Compare your current agent’s connection and streaming logic with these updated examples to spot differences.
 	*	Minimal and Other Worker Examples:
-	*	Review changes in the `minimal_worker.py` and other example files to update how you instantiate and start your VoiceAgent or any other agent type.
+	*	Review changes in the `minimal_worker.py` and other example files to update how you instantiate and start your AgentSession or any other agent type.
 	*	Notice the removal of deprecated parameters and the new initialization patterns.
 
 5. Testing and Validation

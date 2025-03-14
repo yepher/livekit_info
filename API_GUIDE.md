@@ -18,7 +18,7 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
 **Table Of Contnets**
 
 - [Voice Agent API Guide](#voice-agent-api-guide)
-  - [VoiceAgent Class](#voiceagent-class)
+  - [AgentSession Class](#agentsession-class)
     - [Initialization](#initialization)
     - [Detailed Explanation of max_fnc_steps](#detailed-explanation-of-max_fnc_steps)
     - [Key Properties](#key-properties)
@@ -188,7 +188,7 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
 
 
 
-## VoiceAgent Class 
+## AgentSession Class 
 [source code](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/voice/voice_agent.py)
 
 The primary class for voice interactions with LiveKit agents.
@@ -287,7 +287,7 @@ sequenceDiagram
 
 ```python
 # Example: Secure configuration for payment processing
-agent = VoiceAgent(
+agent = AgentSession(
     max_fnc_steps=1,
     # ... other params ...
 )
@@ -373,7 +373,7 @@ Updates the current agent task.
 ### Usage Example
 
 ```python
-agent = VoiceAgent(
+agent = AgentSession(
     instructions="You're a helpful assistant",
     stt=DeepgramSTT(),
     llm=OpenAILlm(),
@@ -1055,7 +1055,7 @@ VAD is a requirement when an STT does not support streaming.
 
 ```mermaid
 sequenceDiagram
-    participant User as VoiceAgent
+    participant User as AgentSession
     participant VAD
     participant VADStream
     participant MetricsMonitorTask
@@ -1230,14 +1230,14 @@ class FunctionContext:
     def __init__(
         self,
         values: dict[str, Any],
-        agent: VoiceAgent,
+        agent: AgentSession,
         ai_functions: list[AIFunction],
         stt: stt.STT | None,
         tts: tts.TTS | None,
         llm: llm.LLM | None,
     ):
         self.values = values  # Parsed function arguments
-        self.agent = agent    # Parent VoiceAgent instance
+        self.agent = agent    # Parent AgentSession instance
         self.ai_functions = ai_functions  # Available functions
         self.stt = stt        # Speech-to-text service
         self.tts = tts        # Text-to-speech service
@@ -1249,7 +1249,7 @@ class FunctionContext:
 | Property        | Description                                  |
 |-----------------|----------------------------------------------|
 | `values`        | Dictionary of parsed function arguments      |
-| `agent`         | VoiceAgent instance for state management     |
+| `agent`         | AgentSession instance for state management     |
 | `ai_functions`  | List of available AI functions               |
 | `stt/tts/llm`   | Access to configured speech services         |
 |                 | May be None if not configured               |
@@ -1736,8 +1736,8 @@ primary_tts = tts.ElevenLabsTTS()
 backup_tts = tts.AzureTTS()
 tts_adapter = FallbackAdapter(primary_tts, [backup_tts])
 
-# Use in VoiceAgent
-agent = VoiceAgent(
+# Use in AgentSession
+agent = AgentSession(
     stt=stt_adapter,
     tts=tts_adapter,
     llm=OpenAILlm()

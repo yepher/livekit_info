@@ -19,12 +19,12 @@ pip install livekit-plugins-turn-detector
 
 ## Usage
 
-This plugin is designed to be used with the `VoiceAgent`:
+This plugin is designed to be used with the `AgentSession`:
 
 ```python
 from livekit.plugins import turn_detector
 
-agent = VoiceAgent(
+agent = AgentSession(
     ...
     turn_detector=turn_detector.EOUModel(),
 )

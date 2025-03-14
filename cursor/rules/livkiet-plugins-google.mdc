@@ -40,8 +40,8 @@ model = google.beta.realtime.RealtimeModel(
     # ...
 )
 
-# Create your VoiceAgent as usual
-agent = VoiceAgent(
+# Create your AgentSession as usual
+agent = AgentSession(
     model=model,
     # ...
 )

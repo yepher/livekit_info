@@ -1,4 +1,4 @@
-## VoiceAgent Class 
+## AgentSession Class 
 [source code](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/voice/voice_agent.py)
 
 The primary class for voice interactions with LiveKit agents.
@@ -97,7 +97,7 @@ sequenceDiagram
 
 ```python
 # Example: Secure configuration for payment processing
-agent = VoiceAgent(
+agent = AgentSession(
     max_fnc_steps=1,
     # ... other params ...
 )
@@ -183,7 +183,7 @@ Updates the current agent task.
 ### Usage Example
 
 ```python
-agent = VoiceAgent(
+agent = AgentSession(
     instructions="You're a helpful assistant",
     stt=DeepgramSTT(),
     llm=OpenAILlm(),

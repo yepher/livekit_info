@@ -4,7 +4,7 @@ import asyncio
 from dotenv import load_dotenv
 from livekit.agents import JobContext, WorkerOptions, cli
 from livekit.agents.metrics import STTMetrics
-from livekit.agents.voice import AgentTask, VoiceAgent
+from livekit.agents.voice import AgentTask, AgentSession
 from livekit.agents.voice.room_io import RoomInputOptions
 from livekit.plugins import cartesia, deepgram, openai
 
@@ -51,7 +51,7 @@ class AlloyTask(AgentTask):
 async def entrypoint(ctx: JobContext):
     await ctx.connect()
 
-    agent = VoiceAgent(
+    agent = AgentSession(
         task=AlloyTask(),
     )
 
