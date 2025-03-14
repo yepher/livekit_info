@@ -1,4 +1,4 @@
-# LiveKit Agent Documentation
+# Agent Documentation
 
 ## Overview
 The `Agent` class is a core component of the LiveKit Voice Agent framework, designed to create conversational AI agents that can handle voice interactions. It provides a structured way to define agent behavior, process audio input, generate responses, and manage conversation flow.

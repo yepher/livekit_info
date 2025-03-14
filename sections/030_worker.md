@@ -1,4 +1,4 @@
-# LiveKit Worker Class Documentation
+# Worker Class Documentation
 
 [source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/worker.py)
 

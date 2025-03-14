@@ -41,14 +41,14 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
       - [metrics_collected](#metrics_collected)
       - [conversation_item_added](#conversation_item_added)
     - [Typical Event Handling Pattern](#typical-event-handling-pattern)
-- [LiveKit Agent Documentation](#livekit-agent-documentation)
+- [Agent Documentation](#agent-documentation)
   - [Overview](#overview)
   - [Key Components](#key-components)
   - [Usage Example](#usage-example)
   - [Workflow](#workflow)
   - [Key Features](#key-features)
   - [Conclusion](#conclusion)
-- [LiveKit Avatar Integration Framework](#livekit-avatar-integration-framework)
+- [Avatar Integration Framework](#avatar-integration-framework)
   - [Core Components](#core-components)
   - [Implementation Pattern](#implementation-pattern)
   - [Agent Implementation](#agent-implementation)
@@ -56,7 +56,7 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
   - [Key Configuration](#key-configuration)
   - [Security Architecture](#security-architecture)
   - [Example Providers](#example-providers)
-- [LiveKit Worker Class Documentation](#livekit-worker-class-documentation)
+- [Worker Class Documentation](#worker-class-documentation)
   - [Purpose](#purpose)
   - [Key Features](#key-features)
   - [Basic Usage](#basic-usage)
@@ -549,7 +549,7 @@ This shows practical patterns for receiving and handling events in a voice agent
 
 
 
-# LiveKit Agent Documentation
+# Agent Documentation
 
 ## Overview
 The `Agent` class is a core component of the LiveKit Voice Agent framework, designed to create conversational AI agents that can handle voice interactions. It provides a structured way to define agent behavior, process audio input, generate responses, and manage conversation flow.
@@ -650,7 +650,7 @@ The Agent framework provides a powerful abstraction for building voice-enabled A
 
 
 
-# LiveKit Avatar Integration Framework
+# Avatar Integration Framework
 
 [Source](https://github.com/livekit/agents/tree/cwilson/simli_test/examples/simli_avatar)
 
@@ -789,7 +789,7 @@ flowchart TB
 
 
 
-# LiveKit Worker Class Documentation
+# Worker Class Documentation
 
 [source](https://github.com/livekit/agents/blob/dev-1.0/livekit-agents/livekit/agents/worker.py)
 

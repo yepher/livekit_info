@@ -1,4 +1,4 @@
-# LiveKit Avatar Integration Framework
+# Avatar Integration Framework
 
 [Source](https://github.com/livekit/agents/tree/cwilson/simli_test/examples/simli_avatar)
 

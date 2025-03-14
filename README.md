@@ -1,4 +1,4 @@
-# LiveKit
+# LiveKit Notes
 
 These are my notes for migrating to LiveKit [Agents 1.0](https://github.com/livekit/agents/tree/dev-1.0) API.
 
