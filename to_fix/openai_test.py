@@ -1,10 +1,10 @@
 import logging
 
 from dotenv import load_dotenv
-from livekit.agents import JobContext, WorkerOptions, cli, llm
+from livekit.agents import JobContext, WorkerOptions, cli
 from livekit.agents.voice import Agent, AgentSession
 from livekit.agents.voice.room_io import RoomInputOptions
-from livekit.plugins import cartesia, deepgram, openai, silero
+from livekit.plugins import openai, silero
 
 logger = logging.getLogger("roomio-example")
 logger.setLevel(logging.INFO)
@@ -12,7 +12,7 @@ logger.setLevel(logging.INFO)
 load_dotenv()
 
 
-class AlloyTask(Agent):
+class AlloyAgent(Agent):
     """
     This is a basic example that demonstrates the use of Agent hooks.
     """
@@ -29,11 +29,11 @@ class AlloyTask(Agent):
 async def entrypoint(ctx: JobContext):
     await ctx.connect()
 
-    agent = AgentSession(
-        task=AlloyTask(),
+    session = AgentSession(
+        task=AlloyAgent(),
     )
 
-    await agent.start(
+    await session.start(
         room=ctx.room,
         room_input_options=RoomInputOptions(),
     )

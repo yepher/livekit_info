@@ -14,7 +14,7 @@ load_dotenv()
 
 
 
-class AlloyTask(Agent):
+class AlloyAgent(Agent):
     def __init__(self) -> None:
         silero_vad = silero.VAD.load()
         super().__init__(
@@ -47,11 +47,10 @@ class AlloyTask(Agent):
 async def entrypoint(ctx: JobContext):
     await ctx.connect()
 
-    agent = AgentSession(
-        task=AlloyTask(),
-    )
+    session = AgentSession()
 
-    await agent.start(
+    await session.start(
+        agent=AlloyAgent(),
         room=ctx.room,
         room_input_options=RoomInputOptions(),
     )

@@ -16,7 +16,7 @@ logger.setLevel(logging.INFO)
 load_dotenv()
 
 
-class AlloyTask(Agent):
+class AlloyAgent(Agent):
     """
     This is a basic example that demonstrates the use of LLM metrics.
     """
@@ -53,11 +53,10 @@ class AlloyTask(Agent):
 async def entrypoint(ctx: JobContext):
     await ctx.connect()
 
-    agent = AgentSession(
-        task=AlloyTask(),
-    )
+    session = AgentSession()
 
-    await agent.start(
+    await session.start(
+        agent=AlloyAgent(),
         room=ctx.room,
         room_input_options=RoomInputOptions(),
     )

@@ -1394,7 +1394,7 @@ class LLMMetrics:
 ```python
 from livekit.agents.metrics import LLMMetrics
 
-class AlloyTask(Agent):
+class AlloyAgent(Agent):
     """
     This is a basic example that demonstrates the use of LLM metrics.
     """
@@ -2096,7 +2096,7 @@ class STTMetrics:
 ```python
 from livekit.agents.metrics import STTMetrics
 
-class AlloyTask(Agent):
+class AlloyAgent(Agent):
     """
     This is a basic example that demonstrates the use of STT metrics.
     """
@@ -2426,7 +2426,7 @@ class TTSMetrics:
 ### Metrics Collection Example
 
 ```python
-class AlloyTask(Agent):
+class AlloyAgent(Agent):
     """
     This is a basic example that demonstrates the use of TTS metrics.
     """

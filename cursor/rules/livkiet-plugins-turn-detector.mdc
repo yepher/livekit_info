@@ -24,7 +24,7 @@ This plugin is designed to be used with the `AgentSession`:
 ```python
 from livekit.plugins import turn_detector
 
-agent = AgentSession(
+session = AgentSession(
     ...
     turn_detector=turn_detector.EOUModel(),
 )

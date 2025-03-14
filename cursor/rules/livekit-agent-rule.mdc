@@ -68,7 +68,7 @@ logger.setLevel(logging.INFO)
 load_dotenv()
 
 
-class EchoTask(Agent):
+class EchoAgent(Agent):
     def __init__(self) -> None:
         super().__init__(
             instructions="You are Echo.",
@@ -89,10 +89,10 @@ class EchoTask(Agent):
 
     @function_tool
     async def talk_to_alloy(self, context: CallContext):
-        return AlloyTask(), "Transferring you to Alloy."
+        return AlloyAgent(), "Transferring you to Alloy."
 
 
-class AlloyTask(Agent):
+class AlloyAgent(Agent):
     def __init__(self) -> None:
         super().__init__(
             instructions="You are Alloy.",
@@ -101,17 +101,16 @@ class AlloyTask(Agent):
 
     @function_tool
     async def talk_to_echo(self, context: CallContext):
-        return EchoTask(), "Transferring you to Echo."
+        return EchoAgent(), "Transferring you to Echo."
 
 
 async def entrypoint(ctx: JobContext):
     await ctx.connect()
 
-    agent = AgentSession(
-        task=AlloyTask(),
-    )
+    session = AgentSession()
 
-    await agent.start(
+    await session.start(
+        agent=AlloyAgent()
         room=ctx.room,
         room_input_options=RoomInputOptions(
             # noise_cancellation=noise_cancellation.BVC(),
@@ -204,7 +203,7 @@ load_dotenv()
 logger = logging.getLogger("openai_assistant")
 
 
-class MyTask(Agent):
+class AlloyAgent(Agent):
     def __init__(self) -> None:
         super().__init__(
             instructions="You are Echo.",
@@ -219,11 +218,10 @@ async def entrypoint(ctx: JobContext):
     """AgentSession using OpenAI's GPT-4o model"""
     await ctx.connect()
 
-    agent = AgentSession(
-        task=MyTask(),
-    )
+    session = AgentSession()
 
-    await agent.start(
+    await session.start(
+        agent=AlloyAgent(),
         room=ctx.room,
         room_input_options=RoomInputOptions(),
     )
