@@ -17,7 +17,7 @@ The project is organized into several modules:
 - Python 3.7+
 - LiveKit server URL and credentials
 - FFmpeg (for audio conversion)
-- Required Python packages:
+- Required Python packages: (see `requirements.txt`)
   ```
   livekit
   numpy
@@ -30,11 +30,13 @@ The project is organized into several modules:
 1. Set the following environment variables:
    ```bash
    export LIVEKIT_URL="your_livekit_server_url"
+   export LIVEKIT_API_KEY="your liveket API key"
+   export LIVEKIT_API_SECRET="your livekit API secret"
    ```
 
 2. Install the required Python packages:
    ```bash
-   pip install livekit numpy sounddevice gtts
+   pip install -r requirements.txt
    ```
 
 ## Usage
