@@ -41,10 +41,12 @@ This is a a summary Agent >=1.0 key changes from previous versions. If any of th
 * `VoicePipelineAgent` and `MultimodalAgent` are now combined into a single interface `AgentSession`
     * Model will be used to determine if 
 * `AssistantLLM` has been removed and should be converted to regular `AgentSession` with a similar model that does not use the Assistant API
+* `STTSegmentsForwarder` has been removed
 * The package `ivekit.agents.pipeline` has been renamed to `livekit.agents.voice`
 * `AgentSession` can use `instruction` or an `Agent` but generally `Agent` should be prefferd now
 * `@agent.on` no longer exists. Now override `Agent` to receive hooks like [`on_enter`, `on_exit`, and `on_end_of_turn`]
 * LLM, STT, TTS, and VAD
+
 
 ## Minimal Voice Agent
 
@@ -56,7 +58,7 @@ import logging
 from dotenv import load_dotenv
 from livekit.agents import JobContext, WorkerOptions, cli
 from livekit.agents.llm import function_tool
-from livekit.agents.voice import Agent, CallContext, AgentSession, UserStartedSpeakingEvent
+from livekit.agents.voice import Agent, RunContext, AgentSession, UserStartedSpeakingEvent
 from livekit.agents.voice.room_io import RoomInputOptions
 from livekit.plugins import cartesia, deepgram, openai
 
@@ -88,7 +90,7 @@ class EchoAgent(Agent):
         # Example: self.agent.output.audio.enable_noise_cancellation(True)
 
     @function_tool
-    async def talk_to_alloy(self, context: CallContext):
+    async def talk_to_alloy(self, context: RunContext):
         return AlloyAgent(), "Transferring you to Alloy."
 
 
@@ -100,7 +102,7 @@ class AlloyAgent(Agent):
         )
 
     @function_tool
-    async def talk_to_echo(self, context: CallContext):
+    async def talk_to_echo(self, context: RunContext):
         return EchoAgent(), "Transferring you to Echo."
 
 

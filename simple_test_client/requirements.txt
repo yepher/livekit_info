@@ -1,0 +1,21 @@
+# brew install ffmpeg
+
+livekit-agents
+livekit-plugins-deepgram
+livekit-plugins-google
+# livekit-plugins-openai[vertex]>=0.10.10
+livekit-plugins-openai
+livekit-plugins-silero
+livekit-plugins-rag
+python-dotenv
+aiofile
+
+gTTS
+pydub
+sounddevice
+
+numpy
+ffmpeg-python
+
+# Add Flask dependency
+flask

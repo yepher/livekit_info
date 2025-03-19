@@ -1,0 +1,39 @@
+[
+    {
+        "type": "wait_for_participant",
+        "params": {
+            "timeout": 30
+        }
+    },
+    {
+        "type": "wait_for_audio",
+        "params": {
+            "timeout": 30
+        }
+    },
+    {
+        "type": "wait_for_silence",
+        "params": {
+            "timeout": 30
+        }
+    },
+    {
+        "type": "tts",
+        "params": {
+            "text": "What is the weather like in Chicago?",
+            "lang": "en"
+        }
+    },
+    {
+        "type": "wait_for_audio",
+        "params": {
+            "timeout": 30
+        }
+    },
+    {
+        "type": "wait_for_silence",
+        "params": {
+            "timeout": 30
+        }
+    }
+] 
