@@ -5,7 +5,7 @@ This project implements a voice-enabled toy travel planning assistant using [Liv
 ## Prerequisites
 
 - Python 3.10 or higher
-- Mem0 API key
+- Mem0 [API key](https://app.mem0.ai/dashboard/api-keys)
 - OpenAI API key (for GPT-4 and TTS)
 - Deepgram API key (for speech-to-text)
 - Environment variables set up (see Configuration section)
