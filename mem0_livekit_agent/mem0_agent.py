@@ -1,19 +1,12 @@
 import logging
-import asyncio
-import logging
 import os
-from typing import List, Dict, Any, Annotated, Optional
-
-import aiohttp
-
+from typing import Optional
 
 from dotenv import load_dotenv
 
 from livekit.agents import (
     Agent,
     AgentSession,
-    ChatContext,
-    ChatMessage,
     JobContext,
     JobProcess,
     RoomInputOptions,
@@ -42,41 +35,6 @@ if not MEM0_API_KEY:
 logger.info("Initializing Mem0 client...")
 mem0 = AsyncMemoryClient(api_key=MEM0_API_KEY)
 
-async def _enrich_with_memory(user_id: str, chat_ctx: ChatContext):
-    """Add memories and Augment chat context with relevant memories"""
-    if not chat_ctx.messages:
-        return
-
-    # Store user message in Mem0
-    user_msg = chat_ctx.messages[-1]
-    logger.info(f"Storing message in Mem0: {user_msg.content}")
-    await mem0.add(
-        [{"role": "user", "content": user_msg.content}],
-        user_id=user_id
-    )
-
-    # Search for relevant memories
-    logger.info(f"Searching memories for user: {user_id}")
-    results = await mem0.search(
-        user_msg.content,
-        user_id=user_id,
-    )
-
-    # Augment context with retrieved memories
-    if results:
-        memories = ' '.join([result["memory"] for result in results])
-        logger.info(f"Found memories: {memories}")
-
-        rag_msg = ChatMessage.create(
-            text=f"Relevant Memory: {memories}\n",
-            role="assistant",
-        )
-
-        # Modify chat context with retrieved memories
-        chat_ctx.messages[-1] = rag_msg
-        chat_ctx.messages.append(user_msg)
-    else:
-        logger.info("No relevant memories found")
 
 class MyAgent(Agent):
     def __init__(self, username: Optional[str] = None) -> None:
