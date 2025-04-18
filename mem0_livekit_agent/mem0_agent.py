@@ -7,6 +7,9 @@ from dotenv import load_dotenv
 from livekit.agents import (
     Agent,
     AgentSession,
+    AudioConfig,
+    BackgroundAudioPlayer,
+    BuiltinAudioClip,
     JobContext,
     JobProcess,
     RoomInputOptions,
@@ -235,6 +238,24 @@ async def entrypoint(ctx: JobContext):
         ),
         room_output_options=RoomOutputOptions(transcription_enabled=True),
     )
+
+    background_audio = BackgroundAudioPlayer(
+        # play keyboard typing sound when the agent is thinking
+        thinking_sound=[
+            AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING, volume=0.8),
+            AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING2, volume=0.7),
+        ],
+    )
+
+    try:
+        await background_audio.start(room=ctx.room, agent_session=session)
+    except Exception as e:
+        logger.error(f"Error starting background audio: {e}")
+        # Continue without background audio if it fails
+        background_audio = None
+
+    # Add cleanup for background audio
+    ctx.add_shutdown_callback(lambda: background_audio.aclose() if background_audio else None)
 
 
 if __name__ == "__main__":
