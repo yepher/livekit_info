@@ -767,9 +767,9 @@ SERVICE_REQUIREMENTS = {
 ```mermaid
 %%{init: {'theme':'neutral'}}%%
 flowchart TB
-    A[Agent] -->|1. DTLS Encrypted| R[Room]
-    S[Service] -->|2. SRTP Media| R
-    R -->|3. E2EE Optional| U[User]
+    A[Agent] -->|1\. DTLS Encrypted| R[Room]
+    S[Service] -->|2\. SRTP Media| R
+    R -->|3\. E2EE Optional| U[User]
     
     style A fill:#4a90e2,color:white
     style S fill:#4a90e2,color:white
