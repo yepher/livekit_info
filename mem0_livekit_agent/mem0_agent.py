@@ -74,6 +74,7 @@ class MyAgent(Agent):
         self.memories = []
         logger.info(f"Initialized agent for user: {self.user_id}")
 
+
     @function_tool
     async def wipe_memories(self, context: RunContext):
         """Delete all stored memories for the current user. Use this when the user wants to start fresh."""
@@ -248,13 +249,11 @@ async def entrypoint(ctx: JobContext):
     # wait for a participant to join the room
     await ctx.wait_for_participant()
 
+    agent = MyAgent(username=participant.identity)
     await session.start(
-        agent=MyAgent(username=participant.identity),  # Pass participant identity as username
+        agent=agent,
         room=ctx.room,
-        room_input_options=RoomInputOptions(
-            # uncomment to enable Krisp BVC noise cancellation
-            # noise_cancellation=noise_cancellation.BVC(),
-        ),
+        room_input_options=RoomInputOptions(),
         room_output_options=RoomOutputOptions(transcription_enabled=True),
     )
 
