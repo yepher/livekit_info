@@ -249,6 +249,7 @@ async def entrypoint(ctx: JobContext):
     # wait for a participant to join the room
     await ctx.wait_for_participant()
 
+    # TODO: base agent memory on SIP phone number if this is a SIP call
     agent = MyAgent(username=participant.identity)
     await session.start(
         agent=agent,
