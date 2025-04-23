@@ -1,3 +1,11 @@
+""" save_conversation.py
+ This script is used to asynchronously save the conversation to:
+      ./transcripts/YYYYMMDD_HHMMSS_room_name.txt
+ 
+ It is not practical as a production script, since it saves the conversation to a local file/
+ but it can be instructive to see how how to see events that happens in the session
+"""
+
 import logging
 import asyncio
 import datetime
@@ -17,7 +25,6 @@ from livekit.agents import (
     RunContext,
     WorkerOptions,
     cli,
-    metrics,
 )
 from livekit.agents.llm import function_tool
 from livekit.agents.voice import MetricsCollectedEvent, FunctionToolsExecutedEvent
@@ -70,6 +77,7 @@ async def entrypoint(ctx: JobContext):
 
     @session.on("metrics_collected")
     def _on_metrics_collected(ev: MetricsCollectedEvent):
+        # This logs every metric event which can be excessive
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         msg = f"{timestamp} - Metrics collected: {ev}\n"
