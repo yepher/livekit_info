@@ -157,27 +157,27 @@ class MyAgent(Agent):
                 },
                 version="v2"
             )
-            
+
             if memories:
                 logger.debug(f"Retrieved memories: {memories}")
                 # Extract memory content from the correct field
                 self.memories = [memory["memory"] for memory in memories if "memory" in memory]
                 logger.info(f"Successfully loaded {len(self.memories)} previous memories for user {self.user_id}")
-                
+
                 if self.memories:
                     # Create a detailed summary of previous trip plans
                     summary = "I remember our previous conversation about your trip plans. "
-                    
+
                     # Find the most recent trip-related memory
                     trip_memories = [m for m in self.memories if any(word in m.lower() for word in ["trip", "travel", "vacation", "cruise", "backpacking"])]
-                    
+
                     if trip_memories:
                         # Get the most recent memory (assuming they're in chronological order)
                         latest_memory = trip_memories[0]
                         summary += f"You were planning to {latest_memory.lower()}. Would you like to continue planning this trip?"
                     else:
                         summary += "Let's continue planning your adventure!"
-                    
+
                     self.session.generate_reply(instructions=f"Greet {self.user_id} and say: {summary}")
                 else:
                     logger.info(f"No valid memories found for user {self.user_id}")
