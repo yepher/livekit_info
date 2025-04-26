@@ -174,21 +174,21 @@ class SimpleAgent(Agent):
         return await self.browser_state.perform_action("reload")
 
     @function_tool()
-    async def scroll_down(self, pixels: Optional[int] = None) -> str:
-        """Scrolls down by the specified number of pixels. Defaults to 100 pixels if not specified."""
+    async def scroll_down(self, pixels: int) -> str:
+        """Scrolls down by the specified number of pixels."""
         return await self.browser_state.perform_action("scroll_down", pixels=pixels)
 
     @function_tool()
-    async def scroll_up(self, pixels: Optional[int] = None) -> str:
-        """Scrolls up by the specified number of pixels. Defaults to 100 pixels if not specified."""
+    async def scroll_up(self, pixels: int) -> str:
+        """Scrolls up by the specified number of pixels."""
         return await self.browser_state.perform_action("scroll_up", pixels=pixels)
 
     @function_tool()
-    async def start_auto_scroll(self, direction: str, speed: Optional[float] = None) -> str:
-        """Starts auto-scrolling in the specified direction at the given speed. Defaults to 1.0x speed if not specified."""
+    async def start_auto_scroll(self, direction: str, speed: float) -> str:
+        """Starts auto-scrolling in the specified direction at the given speed."""
         result = await self.browser_state.perform_action("start_auto_scroll", direction=direction, speed=speed)
         if result == "done":
-            return f"Started auto-scrolling {direction} at {speed or 1.0}x speed."
+            return f"Started auto-scrolling {direction} at {speed}x speed."
         elif result.startswith("I've reached"):
             return result
         return "Failed to start auto-scrolling."
