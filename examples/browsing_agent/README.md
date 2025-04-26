@@ -50,6 +50,10 @@ The agent can perform the following actions through voice commands:
 - "get title": Gets the page title
 - "scroll to [text]": Scrolls to a section containing the text
 
+### Communication
+- "send that as text" or "respond as text": Sends the agent's response as a text message in the chat
+- "send message [text]": Sends a specific text message to the user
+
 ## Example Usage
 
 1. Start the agent:
@@ -63,6 +67,7 @@ python main.py start
 - "Scroll down 200"
 - "Click Documentation"
 - "Read page"
+- "Send that as text"
 
 ## Notes
 
@@ -71,6 +76,7 @@ python main.py start
 - All commands require the browser to be open first
 - The agent will provide feedback on the success or failure of each action
 - Auto-scroll will automatically stop when reaching the top or bottom of the page
+- The agent can respond via voice or text messages in the chat
 
 ## Troubleshooting
 

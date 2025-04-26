@@ -97,6 +97,10 @@ class SimpleAgent(Agent):
             vad=silero.VAD.load()
         )
 
+
+    async def _send_message(self, message: str):
+        await self.room.local_participant.send_text(text=message, topic="lk.chat")
+
     def _update_participant_names(self):
         """Update the cached participant names."""
         for identity, participant in self.room.remote_participants.items():
@@ -111,6 +115,7 @@ class SimpleAgent(Agent):
 
     async def on_enter(self):
         self._update_participant_names()
+        await self._send_message("Hello! I'm a browsing agent. How can I help you today?")
         self.session.generate_reply()
 
     async def on_participant_joined(self, participant: rtc.RemoteParticipant):
@@ -245,6 +250,18 @@ class SimpleAgent(Agent):
     async def press_enter(self) -> str:
         """Presses the Enter key."""
         return await self.browser_state.perform_action("press_enter")
+
+    @function_tool()
+    async def send_message(self, message: Annotated[str, Field(description="The message to send to the user")]) -> str:
+        """Sends a message to the user in the chat."""
+        await self._send_message(message)
+        return "Message sent successfully."
+
+    @function_tool()
+    async def respond_as_text(self, message: Annotated[str, Field(description="The message to send as a text response")]) -> str:
+        """Responds to the user with a text message instead of voice."""
+        await self._send_message(message)
+        return "Responded with text message."
 
 class JobState:
     def __init__(self, room: rtc.Room):
