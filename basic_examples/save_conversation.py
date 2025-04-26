@@ -30,6 +30,8 @@ from livekit.agents.llm import function_tool
 from livekit.agents.voice import MetricsCollectedEvent, FunctionToolsExecutedEvent
 from livekit.plugins import deepgram, openai, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
+from livekit.agents import ConversationItemAddedEvent
+from livekit.agents.llm import ImageContent, AudioContent
 
 # uncomment to enable Krisp background voice/noise cancellation
 # currently supported on Linux and MacOS
@@ -94,6 +96,12 @@ async def entrypoint(ctx: JobContext):
                 msg = f"{timestamp} - Chat Context: {event.item.role}: {content} (interrupted={event.item.interrupted})\n"
                 log_queue.put_nowait(msg)
                 print(msg.strip())
+            elif isinstance(content, ImageContent):
+                # image is either a rtc.VideoFrame or URL to the image
+                print(f" - image: {content.image}")
+            elif isinstance(content, AudioContent):
+                # frame is a list[rtc.AudioFrame]
+                print(f" - audio: {content.frame}, transcript: {content.transcript}")
             else:
                 msg = f"{timestamp} - Unknown content type: {type(content)}\n"
                 log_queue.put_nowait(msg)

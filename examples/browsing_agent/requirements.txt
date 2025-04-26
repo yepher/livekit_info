@@ -1,0 +1,4 @@
+livekit-agents[openai,silero,turn-detector,deepgram,silero,openai,google,anthropic,cartesia,elevenlabs,rime,noise-cancellation]~=1.0rc
+python-dotenv
+playwright
+Pillow

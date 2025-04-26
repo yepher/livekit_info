@@ -1,3 +1,6 @@
 launch.json
 basic_examples/__pycache__
 basic_examples/transcripts
+.env
+examples/browsing_agent/__pycache__
+livekit.toml
