@@ -115,7 +115,7 @@ class SimpleAgent(Agent):
 
     async def on_enter(self):
         self._update_participant_names()
-        await self._send_message("Hello! I'm a browsing agent. How can I help you today?")
+        await self._send_message("Hello! I'm a browsing agent. Would you like me to open my browser?")
         self.session.generate_reply()
 
     async def on_participant_joined(self, participant: rtc.RemoteParticipant):
@@ -262,6 +262,46 @@ class SimpleAgent(Agent):
         """Responds to the user with a text message instead of voice."""
         await self._send_message(message)
         return "Responded with text message."
+
+    @function_tool()
+    async def help(self) -> str:
+        """Provides help information about available actions."""
+        help_message = """Here are the types of actions you can ask me to perform:
+
+Browser Control:
+- "open browser" or "show browser": Opens a browser window
+- "close browser" or "hide browser": Closes the browser window
+- "go to [website]": Navigates to a specific website
+- "go back": Navigates back in browser history
+- "go forward": Navigates forward in browser history
+- "reload": Reloads the current page
+
+Scrolling:
+- "scroll down [pixels]": Scrolls down by specified pixels (e.g., "scroll down 200")
+- "scroll up [pixels]": Scrolls up by specified pixels (e.g., "scroll up 200")
+- "start auto-scroll [direction] [speed]": Starts auto-scrolling (e.g., "start auto-scroll down 1.5")
+- "stop auto-scroll": Stops auto-scrolling
+
+Interaction:
+- "click at [x] [y]": Clicks at specific coordinates
+- "click [text]": Clicks an element with matching text
+- "fill [selector] [value]": Fills an input field
+- "select [selector] [value]": Selects an option from a dropdown
+- "list inputs": Lists all input fields on the page
+- "press enter": Presses the Enter key
+
+Content Reading:
+- "read page": Gets the page content as markdown
+- "get title": Gets the page title
+- "scroll to [text]": Scrolls to a section containing the text
+
+Communication:
+- "send that as text" or "respond as text": Sends my response as a text message
+- "send message [text]": Sends a specific text message to you
+
+Remember to open the browser first before trying any other actions!"""
+        await self._send_message(help_message)
+        return "Sent help information as text message."
 
 class JobState:
     def __init__(self, room: rtc.Room):

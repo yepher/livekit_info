@@ -1,0 +1,5 @@
+python-dotenv
+requests
+livekit-agents[google,openai,silero,deepgram,cartesia,elevenlabs,turn-detector,bey,tavusi,bithuman]~=1.0
+livekit-plugins-noise-cancellation~=0.2
+
