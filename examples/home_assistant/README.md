@@ -14,6 +14,8 @@ _(click image to see short YouTube video of agent controlling a TV lift)_
 - Home Assistant instance (local or remote)
 - The dependencies listed in `requirements.txt`
 
+For simplicity and make it more accessible to folks it is using OpenAI, Silero, and Deepgram. You can change this to use all local services by switching to Ollama and any TTS, STT that you may have available.
+
 ## Environment Variables
 
 Create a `.env` file in the project root (or set these variables in your environment):
