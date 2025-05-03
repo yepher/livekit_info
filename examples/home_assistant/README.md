@@ -1,6 +1,12 @@
 # Home Automation Voice Agent
 
-This project provides a voice-controlled agent for interacting with your Home Assistant setup. The agent listens for a hot word and allows you to list and control smart devices (like lights and switches) using natural language.
+This project provides a voice-controlled agent for interacting with your [Home Assistant](https://www.home-assistant.io/) setup. The agent listens for a hot word and allows you to list and control smart devices (like lights and switches) using natural language.
+
+_(click image to see short YouTube video of agent controlling lighting)_  
+[![Control Lights](https://img.youtube.com/vi/IwDlZXJjsFY/0.jpg)](https://youtu.be/IwDlZXJjsFY)
+
+_(click image to see short YouTube video of agent controlling a TV lift)_  
+[![Hide/Unhide TV](https://img.youtube.com/vi/mcz0MOzswV0/0.jpg)](https://youtu.be/mcz0MOzswV0)
 
 ## Requirements
 
@@ -35,14 +41,14 @@ HOMEAUTOMATION_URL=http://localhost:8123
 
 3. **Run the agent:**
    ```
-   python homeautomation.py
+   python homeautomation.py start
    ```
 
 4. **How it works:**
    - The agent waits for the hot word: **"hey casa"**.
    - After hearing the hot word, you can ask it to list devices or control them, e.g.:
      - "Hey casa, turn on the kitchen light."
-     - "Hey casa, list devices."
+     - "Hey casa, what lights are in the kitch?"
    - The agent will respond and control your Home Assistant devices accordingly.
 
 ## Features
@@ -50,6 +56,31 @@ HOMEAUTOMATION_URL=http://localhost:8123
 - **Hot word detection:** Only responds after hearing "hey casa".
 - **Device listing:** Lists available lights, switches, and binary sensors.
 - **Device control:** Turn devices on or off by name.
+
+## How It Works
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Agent
+    participant HomeAssistant
+
+    User->>Agent: "hey casa"
+    Agent->>Agent: Detect hot word
+    Agent->>User: "Waiting for command"
+
+    User->>Agent: "list devices"
+    Agent->>HomeAssistant: GET /api/states
+    HomeAssistant-->>Agent: List of devices
+    Agent->>User: "Available devices: Kitchen Light, Living Room Switch..."
+
+    User->>Agent: "turn on kitchen light"
+    Agent->>HomeAssistant: GET /api/states/light.kitchen
+    HomeAssistant-->>Agent: Device details
+    Agent->>HomeAssistant: POST /api/services/light/turn_on
+    HomeAssistant-->>Agent: Success
+    Agent->>User: "Ok, I've turned Kitchen Light on"
+```
 
 ## Troubleshooting
 

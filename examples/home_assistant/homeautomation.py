@@ -19,7 +19,7 @@ logger.setLevel(logging.INFO)
 HOMEAUTOMAITON_TOKEN = os.getenv("HOMEAUTOMAITON_TOKEN")
 HOMEAUTOMATION_URL = os.getenv("HOMEAUTOMATION_URL", "http://localhost:8123")
 
-class SimpleAgent(Agent):  
+class HomeAgent(Agent):  
     def __init__(self) -> None:  
         super().__init__(  
             instructions="""  
@@ -36,10 +36,9 @@ class SimpleAgent(Agent):
         self.hot_word = "hey casa"  
       
     async def on_enter(self):  
-        # Inform the user that the agent is waiting for the hot word  
-        logger.info("Waiting for hot word: 'Hey Home'")  
-        # We don't want to generate a reply immediately anymore  
-        # self.session.generate_reply()  
+        logger.info(f"Waiting for hot word: '{self.hot_word}'")  
+        self.session.say(f"Waiting for hot word: {self.hot_word}")
+
       
     async def stt_node(self, text: AsyncIterable[str], model_settings: Optional[dict] = None) -> Optional[AsyncIterable[rtc.AudioFrame]]:  
         parent_stream = super().stt_node(text, model_settings)  
@@ -140,7 +139,7 @@ class SimpleAgent(Agent):
         headers = {"Authorization": f"Bearer {HOMEAUTOMAITON_TOKEN}"}
         
         try:
-            response = requests.post(url, headers=headers, json={"entity_id": entity_id})
+            response = requests.post(url, headers=headers, json={"entity_id": entity_id}, timeout=10)
             if response.status_code in (200, 201):
                 self.session.say(f"Ok, I've turned {entity_id} {state}")
             else:
@@ -149,6 +148,163 @@ class SimpleAgent(Agent):
             self.session.say("Sorry, I'm having trouble connecting to the home automation system")
         
         return None
+
+    @function_tool()
+    async def get_energy_usage(self) -> Dict[str, float]:
+        """Get current energy usage information."""
+        if not HOMEAUTOMAITON_TOKEN:
+            self.session.say("Sorry, I can't get energy usage right now - the token is not configured")
+            return {}
+
+        url = f"{HOMEAUTOMATION_URL}/api/states"
+        headers = {"Authorization": f"Bearer {HOMEAUTOMAITON_TOKEN}"}
+        
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                states = response.json()
+                energy_data = {
+                    'current_usage': float(next(s['state'] for s in states if s['entity_id'] == 'sensor.energy_usage')),
+                    'daily_usage': float(next(s['state'] for s in states if s['entity_id'] == 'sensor.daily_usage')),
+                    'monthly_usage': float(next(s['state'] for s in states if s['entity_id'] == 'sensor.monthly_usage')),
+                    'yearly_usage': float(next(s['state'] for s in states if s['entity_id'] == 'sensor.yearly_usage'))
+                }
+                return energy_data
+            else:
+                self.session.say("Sorry, I couldn't get the energy usage data")
+                return {}
+        except requests.exceptions.RequestException:
+            self.session.say("Sorry, I'm having trouble connecting to the home automation system")
+            return {}
+
+    @function_tool()
+    async def get_temperatures(self) -> Dict[str, float]:
+        """Get temperature readings from all sensors."""
+        if not HOMEAUTOMAITON_TOKEN:
+            self.session.say("Sorry, I can't get temperature readings right now - the token is not configured")
+            return {}
+
+        url = f"{HOMEAUTOMATION_URL}/api/states"
+        headers = {"Authorization": f"Bearer {HOMEAUTOMAITON_TOKEN}"}
+        
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                states = response.json()
+                temp_data = {
+                    'living_room': float(next(s['state'] for s in states if s['entity_id'] == 'sensor.livingroom_thermostat_air_temperature')),
+                    'bathroom': float(next(s['state'] for s in states if s['entity_id'] == 'sensor.bathroom_air_temperature')),
+                    'kitchen': float(next(s['state'] for s in states if s['entity_id'] == 'sensor.kitchen_flood_sensor_air_temperature')),
+                    'tool_room': float(next(s['state'] for s in states if s['entity_id'] == 'sensor.tool_room_temperature'))
+                }
+                return temp_data
+            else:
+                self.session.say("Sorry, I couldn't get the temperature readings")
+                return {}
+        except requests.exceptions.RequestException:
+            self.session.say("Sorry, I'm having trouble connecting to the home automation system")
+            return {}
+
+    @function_tool()
+    async def get_thermostat_info(self, entity_id: str) -> Dict[str, str]:
+        """Get current thermostat state and settings.
+        
+        Args:
+            entity_id: The ID of the thermostat to query (e.g. 'climate.livingroom_thermostat')
+        """
+        if not HOMEAUTOMAITON_TOKEN:
+            self.session.say("Sorry, I can't get thermostat information right now - the token is not configured")
+            return {}
+
+        url = f"{HOMEAUTOMATION_URL}/api/states/{entity_id}"
+        headers = {"Authorization": f"Bearer {HOMEAUTOMAITON_TOKEN}"}
+        
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                thermostat = response.json()
+                return {
+                    'mode': thermostat['state'],
+                    'current_temperature': thermostat['attributes']['current_temperature'],
+                    'target_temperature': thermostat['attributes']['temperature'],
+                    'humidity': thermostat['attributes']['current_humidity']
+                }
+            else:
+                self.session.say("Sorry, I couldn't get the thermostat information")
+                return {}
+        except requests.exceptions.RequestException:
+            self.session.say("Sorry, I'm having trouble connecting to the home automation system")
+            return {}
+
+    @function_tool()
+    async def set_thermostat(self, entity_id: str, mode: str, temperature: float) -> None:
+        """Set thermostat mode and temperature.
+        
+        Args:
+            entity_id: The ID of the thermostat to control (e.g. 'climate.livingroom_thermostat')
+            mode: Either 'heat', 'cool', or 'off'
+            temperature: Temperature to set (in Fahrenheit)
+        """
+        if not HOMEAUTOMAITON_TOKEN:
+            self.session.say("Sorry, I can't control the thermostat right now - the token is not configured")
+            return
+
+        if mode not in ['heat', 'cool', 'off']:
+            self.session.say("Sorry, I can only set the thermostat to heat, cool, or off")
+            return
+
+        url = f"{HOMEAUTOMATION_URL}/api/services/climate/set_hvac_mode"
+        headers = {"Authorization": f"Bearer {HOMEAUTOMAITON_TOKEN}"}
+        data = {"entity_id": entity_id, "hvac_mode": mode}
+        
+        try:
+            response = requests.post(url, headers=headers, json=data, timeout=10)
+            if response.status_code in (200, 201):
+                temp_url = f"{HOMEAUTOMATION_URL}/api/services/climate/set_temperature"
+                temp_data = {
+                    "entity_id": entity_id,
+                    "temperature": temperature
+                }
+                temp_response = requests.post(temp_url, headers=headers, json=temp_data, timeout=10)
+                if temp_response.status_code in (200, 201):
+                    self.session.say(f"Ok, I've set the thermostat to {mode} mode and temperature to {temperature}°F")
+                else:
+                    self.session.say(f"Ok, I've set the thermostat to {mode} mode, but couldn't set the temperature")
+            else:
+                self.session.say("Sorry, I couldn't control the thermostat")
+        except requests.exceptions.RequestException:
+            self.session.say("Sorry, I'm having trouble connecting to the home automation system")
+
+    @function_tool()
+    async def list_thermostats(self) -> List[Dict[str, str]]:
+        """List all available thermostats in the home automation system."""
+        if not HOMEAUTOMAITON_TOKEN:
+            self.session.say("Sorry, I can't list thermostats right now - the token is not configured")
+            return []
+
+        url = f"{HOMEAUTOMATION_URL}/api/states"
+        headers = {"Authorization": f"Bearer {HOMEAUTOMAITON_TOKEN}"}
+        
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                states = response.json()
+                thermostats = []
+                for state in states:
+                    if state['entity_id'].startswith('climate.'):
+                        thermostats.append({
+                            'entity_id': state['entity_id'],
+                            'name': state['attributes'].get('friendly_name', 'Unnamed Thermostat'),
+                            'current_temperature': state['attributes'].get('current_temperature', 'Unknown'),
+                            'mode': state['state']
+                        })
+                return thermostats
+            else:
+                self.session.say("Sorry, I couldn't get the list of thermostats")
+                return []
+        except requests.exceptions.RequestException:
+            self.session.say("Sorry, I'm having trouble connecting to the home automation system")
+            return []
 
     async def on_user_turn_completed(self, chat_ctx, new_message=None):  
         # Only generate a reply if the hot word was detected  
@@ -169,7 +325,7 @@ async def entrypoint(ctx: JobContext):
     session = AgentSession()
 
     await session.start(
-        agent=SimpleAgent(),
+        agent=HomeAgent(),
         room=ctx.room
     )
 
