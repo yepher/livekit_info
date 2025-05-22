@@ -20,6 +20,10 @@ logger = logging.getLogger("text-chat")
 # Load environment variables
 load_dotenv()
 
+CHAT_TOPIC = "lk.chat"
+LLM_RESPONSE_TOPIC = "llmResponse"
+TRANSCRIPTION_TOPIC = "lk.transcription"
+
 # Store active tasks to prevent garbage collection
 _active_tasks: Set[asyncio.Task] = set()
 
@@ -237,8 +241,9 @@ async def main(room: rtc.Room):
         _active_tasks.add(task)
         task.add_done_callback(lambda t: _active_tasks.remove(t))
 
-    room.register_text_stream_handler("lk.chat", register_text_handler)
-    room.register_text_stream_handler("lk.transcription", register_text_handler)
+    room.register_text_stream_handler(CHAT_TOPIC, register_text_handler)
+    room.register_text_stream_handler(TRANSCRIPTION_TOPIC, register_text_handler)
+    room.register_text_stream_handler(LLM_RESPONSE_TOPIC, register_text_handler)
 
     # Connect to room
     logger.info(f"Connecting to room: {room_name}")
@@ -285,7 +290,7 @@ async def main(room: rtc.Room):
                     break
                 if user_input:
                     logger.info(f"You: {user_input}")  # Add the "You:" prefix here when we actually have input
-                    await room.local_participant.send_text(user_input, topic="lk.chat")
+                    await room.local_participant.send_text(user_input, topic=CHAT_TOPIC)
             except asyncio.TimeoutError:
                 # No user input, continue processing events
                 continue
