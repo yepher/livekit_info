@@ -4,3 +4,4 @@ basic_examples/transcripts
 .env
 examples/browsing_agent/__pycache__
 livekit.toml
+examples/livekit_expert_agent/__pycache__

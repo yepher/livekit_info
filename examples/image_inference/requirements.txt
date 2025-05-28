@@ -1,0 +1,4 @@
+livekit-agents[google,openai,silero,deepgram,cartesia,elevenlabs,turn-detector,bey,tavus,bithuman,rime,speechmatics]~=1.0
+livekit-plugins-noise-cancellation~=0.2
+python-dotenv
+pvporcupine
