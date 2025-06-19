@@ -347,7 +347,6 @@ class BrowserState:
         self.pages = []
         self.active_tab_index = 0
         self.context = None
-        self.pending_new_tab_notification = None
 
     async def check_and_recover(self) -> bool:
         """Checks if the browser is still responsive and recovers if needed."""
@@ -680,10 +679,21 @@ class BrowserState:
             if not getattr(self, '_creating_manual_tab', False) and not getattr(self, '_initializing_browser', False):
                 self.pages.append(page)
                 logger.info(f"Automatic new tab detected. Total tabs: {len(self.pages)}")
-                self.pending_new_tab_notification = len(self.pages)
-                logger.info(f"Set pending_new_tab_notification to: {self.pending_new_tab_notification}")
+                
+                self.page = page
+                self.active_tab_index = len(self.pages) - 1
+                
+                if self.automation:
+                    self.automation.page = self.page
+                
+                self.last_screenshot = None
+                self.last_url = None
+                self.last_content_hash = None
+                self.last_update_time = 0
+                
+                logger.info(f"Automatically switched to new tab {len(self.pages)}")
             else:
-                logger.info(f"Manual tab creation detected, not triggering notification")
+                logger.info(f"Manual tab creation detected, not auto-switching")
         except Exception as e:
             logger.error(f"Error handling new page: {e}")
 
@@ -822,24 +832,5 @@ class BrowserState:
             return f"Failed to close tab {tab_index}."
 
     async def check_new_tab_notification(self) -> str:
-        """Checks if there's a pending new tab notification and returns appropriate message."""
-        logger.info(f"Checking new tab notification. pending_new_tab_notification: {self.pending_new_tab_notification}")
-        if self.pending_new_tab_notification is not None:
-            tab_number = self.pending_new_tab_notification
-            self.pending_new_tab_notification = None
-            logger.info(f"Processing notification for tab {tab_number}")
-            
-            try:
-                new_tab_page = self.pages[tab_number - 1]
-                title = await new_tab_page.title()
-                message = f"A new tab was automatically opened: Tab {tab_number} - {title}. Would you like me to switch to it? Just say 'switch to tab {tab_number}' or 'yes'."
-                logger.info(f"Generated notification message: {message}")
-                return message
-            except Exception as e:
-                logger.error(f"Error getting new tab info: {e}")
-                message = f"A new tab was automatically opened (Tab {tab_number}). Would you like me to switch to it? Just say 'switch to tab {tab_number}' or 'yes'."
-                logger.info(f"Generated fallback notification message: {message}")
-                return message
-        
-        logger.info("No pending new tab notification")
-        return None              
+        """Deprecated - now automatically switches to new tabs instead of notifications."""
+        return None                                                 

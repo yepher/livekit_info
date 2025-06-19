@@ -216,16 +216,12 @@ class SimpleAgent(Agent):
     async def click_at(self, x: Annotated[int, Field(description="X coordinate")], 
                       y: Annotated[int, Field(description="Y coordinate")]) -> str:
         """Clicks at the specified coordinates."""
-        result = await self.browser_state.perform_action("click_at", x=x, y=y)
-        await self._check_new_tab_notifications()
-        return result
+        return await self.browser_state.perform_action("click_at", x=x, y=y)
 
     @function_tool()
     async def click_by_text(self, text: Annotated[str, Field(description="Text content of the element to click")]) -> str:
         """Clicks an element with the specified text content."""
-        result = await self.browser_state.perform_action("click_by_text", text=text)
-        await self._check_new_tab_notifications()
-        return result
+        return await self.browser_state.perform_action("click_by_text", text=text)
 
     @function_tool()
     async def fill_input(self, selector: Annotated[str, Field(description="CSS selector for the input field")], 
@@ -262,9 +258,7 @@ class SimpleAgent(Agent):
     @function_tool()
     async def press_enter(self) -> str:
         """Presses the Enter key."""
-        result = await self.browser_state.perform_action("press_enter")
-        await self._check_new_tab_notifications()
-        return result
+        return await self.browser_state.perform_action("press_enter")
 
     @function_tool()
     async def list_tabs(self) -> str:
@@ -296,25 +290,7 @@ class SimpleAgent(Agent):
         
         return await self.browser_state.perform_action("navigate_to", url="https://deepwiki.com/livekit/livekit_composite")
 
-    async def _check_new_tab_notifications(self):
-        """Checks for and handles new tab notifications."""
-        logger.info("_check_new_tab_notifications called")
-        if self.browser_state.is_open:
-            notification = await self.browser_state.check_new_tab_notification()
-            if notification:
-                logger.info(f"Sending notification to user: {notification}")
-                await self._send_message(notification)
-                try:
-                    self.session.say(notification, add_to_chat_ctx=False)
-                    logger.info("Spoken notification sent successfully")
-                except Exception as e:
-                    logger.error(f"Failed to speak notification: {e}")
-                return True
-            else:
-                logger.info("No notification to send")
-        else:
-            logger.info("Browser not open, skipping notification check")
-        return False
+
 
     @function_tool()
     async def send_message(self, message: Annotated[str, Field(description="The message to send to the user")]) -> str:
