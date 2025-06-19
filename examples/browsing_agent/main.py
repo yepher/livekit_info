@@ -304,6 +304,11 @@ class SimpleAgent(Agent):
             if notification:
                 logger.info(f"Sending notification to user: {notification}")
                 await self._send_message(notification)
+                try:
+                    self.session.say(notification, add_to_chat_ctx=False)
+                    logger.info("Spoken notification sent successfully")
+                except Exception as e:
+                    logger.error(f"Failed to speak notification: {e}")
                 return True
             else:
                 logger.info("No notification to send")
