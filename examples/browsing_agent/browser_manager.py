@@ -342,6 +342,7 @@ class BrowserState:
         self.last_screenshot = None
         self.last_url = None
         self.last_update_time = 0
+        self.last_content_hash = None
         self.automation = None
 
     async def check_and_recover(self) -> bool:
@@ -374,10 +375,32 @@ class BrowserState:
             current_time = time.time()
             current_url = self.page.url
             
-            # Update if URL changed or 3 seconds have passed
-            if (self.last_screenshot is None or 
-                current_url != self.last_url or 
-                current_time - self.last_update_time >= 3):
+            time_since_last = current_time - self.last_update_time
+            if time_since_last < 3 and self.last_screenshot is not None:
+                if time_since_last < 1:
+                    return self.last_screenshot
+            
+            # Check if URL changed (always capture on URL change)
+            url_changed = current_url != self.last_url
+            
+            content_changed = False
+            if not url_changed and self.last_screenshot is not None:
+                try:
+                    sample_screenshot = await self.page.screenshot(type='png', clip={'x': 0, 'y': 0, 'width': 100, 'height': 100})
+                    import hashlib
+                    current_hash = hashlib.md5(sample_screenshot).hexdigest()
+                    if not hasattr(self, 'last_content_hash') or self.last_content_hash is None:
+                        self.last_content_hash = current_hash
+                        content_changed = True
+                    else:
+                        content_changed = current_hash != self.last_content_hash
+                        self.last_content_hash = current_hash
+                except Exception:
+                    content_changed = True
+            
+            if (url_changed or content_changed or 
+                self.last_screenshot is None or 
+                time_since_last >= 3):
                 
                 self.last_screenshot = await self.page.screenshot(type='png')
                 self.last_url = current_url
@@ -608,4 +631,4 @@ class BrowserState:
 
         except Exception as e:
             logger.error(f"Error performing action {action}: {e}")
-            return "failed" 
+            return "failed"  
