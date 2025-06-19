@@ -344,6 +344,9 @@ class BrowserState:
         self.last_update_time = 0
         self.last_content_hash = None
         self.automation = None
+        self.pages = []
+        self.active_tab_index = 0
+        self.context = None
 
     async def check_and_recover(self) -> bool:
         """Checks if the browser is still responsive and recovers if needed."""
@@ -426,7 +429,13 @@ class BrowserState:
             try:
                 self.playwright = await async_playwright().start()
                 self.browser = await self.playwright.chromium.launch(headless=True)
-                self.page = await self.browser.new_page()
+                self.context = await self.browser.new_context()
+                
+                self.context.on("page", self._on_new_page)
+                
+                self.page = await self.context.new_page()
+                self.pages = [self.page]
+                self.active_tab_index = 0
                 self.is_open = True
                 self.last_update_time = time.time()
                 self.automation = BrowserAutomation(self.page)
@@ -475,7 +484,16 @@ class BrowserState:
                     self.screen_track = None
                     self.screen_source = None
 
-                # Close browser
+                if self.pages:
+                    for page in self.pages:
+                        try:
+                            await page.close()
+                        except Exception as e:
+                            logger.error(f"Error closing page: {e}")
+
+                # Close browser context and browser
+                if self.context:
+                    await self.context.close()
                 if self.browser:
                     await self.browser.close()
                 if self.playwright:
@@ -484,6 +502,9 @@ class BrowserState:
                 # Reset state
                 self.browser = None
                 self.page = None
+                self.context = None
+                self.pages = []
+                self.active_tab_index = 0
                 self.playwright = None
                 self.is_open = False
                 self.last_screenshot = None
@@ -622,6 +643,21 @@ class BrowserState:
                 success = await self.automation.press_enter()
                 return "done" if success else "failed"
             
+            elif action == "list_tabs":
+                return await self.list_tabs()
+            
+            elif action == "switch_tab":
+                tab_index = kwargs.get("tab_index", 1)
+                return await self.switch_tab(tab_index)
+            
+            elif action == "new_tab":
+                url = kwargs.get("url")
+                return await self.new_tab(url)
+            
+            elif action == "close_tab":
+                tab_index = kwargs.get("tab_index", 1)
+                return await self.close_tab(tab_index)
+            
             else:
                 return f"Unknown action: {action}"
 
@@ -631,4 +667,142 @@ class BrowserState:
 
         except Exception as e:
             logger.error(f"Error performing action {action}: {e}")
-            return "failed"  
+            return "failed"
+
+    def _on_new_page(self, page):
+        """Handler for when a new page/tab is opened automatically."""
+        try:
+            self.pages.append(page)
+            logger.info(f"New tab detected. Total tabs: {len(self.pages)}")
+        except Exception as e:
+            logger.error(f"Error handling new page: {e}")
+
+    async def list_tabs(self) -> str:
+        """Returns a list of all open tabs with their titles and URLs."""
+        if not self.is_open or not self.pages:
+            return "No tabs are currently open."
+        
+        try:
+            tab_info = []
+            for i, page in enumerate(self.pages):
+                try:
+                    title = await page.title()
+                    url = page.url
+                    active_marker = " (ACTIVE)" if i == self.active_tab_index else ""
+                    tab_info.append(f"{i + 1}. {title} - {url}{active_marker}")
+                except Exception as e:
+                    tab_info.append(f"{i + 1}. [Error getting tab info] - {str(e)}")
+            
+            return "Open tabs:\n" + "\n".join(tab_info)
+        except Exception as e:
+            logger.error(f"Error listing tabs: {e}")
+            return "Error retrieving tab information."
+
+    async def switch_tab(self, tab_index: int) -> str:
+        """Switches to the specified tab (1-based index)."""
+        if not self.is_open or not self.pages:
+            return "No tabs are currently open."
+        
+        zero_based_index = tab_index - 1
+        
+        if zero_based_index < 0 or zero_based_index >= len(self.pages):
+            return f"Invalid tab number. Please choose between 1 and {len(self.pages)}."
+        
+        try:
+            target_page = self.pages[zero_based_index]
+            await target_page.evaluate("1 + 1")
+            
+            self.page = target_page
+            self.active_tab_index = zero_based_index
+            
+            if self.automation:
+                self.automation.page = self.page
+            
+            self.last_screenshot = None
+            self.last_url = None
+            self.last_content_hash = None
+            self.last_update_time = 0
+            
+            title = await self.page.title()
+            return f"Switched to tab {tab_index}: {title}"
+            
+        except Exception as e:
+            logger.error(f"Error switching to tab {tab_index}: {e}")
+            self.pages.pop(zero_based_index)
+            if self.active_tab_index >= len(self.pages):
+                self.active_tab_index = max(0, len(self.pages) - 1)
+            return f"Tab {tab_index} is no longer available and has been removed."
+
+    async def new_tab(self, url: str = None) -> str:
+        """Creates a new tab and optionally navigates to a URL."""
+        if not self.is_open or not self.context:
+            return "Browser is not open. Please open it first."
+        
+        try:
+            new_page = await self.context.new_page()
+            self.pages.append(new_page)
+            
+            self.page = new_page
+            self.active_tab_index = len(self.pages) - 1
+            
+            if self.automation:
+                self.automation.page = self.page
+            
+            self.last_screenshot = None
+            self.last_url = None
+            self.last_content_hash = None
+            self.last_update_time = 0
+            
+            if url:
+                success = await self.automation.navigate_to(url)
+                if success:
+                    return f"Created new tab and navigated to {url}"
+                else:
+                    return f"Created new tab but failed to navigate to {url}"
+            else:
+                return f"Created new tab {len(self.pages)}"
+                
+        except Exception as e:
+            logger.error(f"Error creating new tab: {e}")
+            return "Failed to create new tab."
+
+    async def close_tab(self, tab_index: int) -> str:
+        """Closes the specified tab (1-based index)."""
+        if not self.is_open or not self.pages:
+            return "No tabs are currently open."
+        
+        if len(self.pages) == 1:
+            return "Cannot close the last remaining tab. Use 'close browser' instead."
+        
+        zero_based_index = tab_index - 1
+        
+        if zero_based_index < 0 or zero_based_index >= len(self.pages):
+            return f"Invalid tab number. Please choose between 1 and {len(self.pages)}."
+        
+        try:
+            page_to_close = self.pages[zero_based_index]
+            title = await page_to_close.title()
+            
+            await page_to_close.close()
+            self.pages.pop(zero_based_index)
+            
+            if zero_based_index == self.active_tab_index:
+                self.active_tab_index = max(0, zero_based_index - 1)
+                self.page = self.pages[self.active_tab_index]
+                
+                if self.automation:
+                    self.automation.page = self.page
+                
+                self.last_screenshot = None
+                self.last_url = None
+                self.last_content_hash = None
+                self.last_update_time = 0
+                
+            elif zero_based_index < self.active_tab_index:
+                self.active_tab_index -= 1
+            
+            return f"Closed tab: {title}"
+            
+        except Exception as e:
+            logger.error(f"Error closing tab {tab_index}: {e}")
+            return f"Failed to close tab {tab_index}." 

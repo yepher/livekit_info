@@ -52,6 +52,12 @@ class SimpleAgent(Agent):
                 - "go forward": Navigates forward in browser history
                 - "reload": Reloads the current page
 
+                Tab Management:
+                - "list tabs": Shows all open browser tabs with their titles and URLs
+                - "switch to tab [number]": Switches to a specific tab by number
+                - "new tab [url]": Creates a new tab, optionally navigating to a URL
+                - "close tab [number]": Closes a specific tab by number
+
                 Scrolling:
                 - "scroll down [pixels]": Scrolls down by specified pixels (default 100)
                 - "scroll up [pixels]": Scrolls up by specified pixels (default 100)
@@ -252,6 +258,26 @@ class SimpleAgent(Agent):
         return await self.browser_state.perform_action("press_enter")
 
     @function_tool()
+    async def list_tabs(self) -> str:
+        """List all open browser tabs with their titles and URLs."""
+        return await self.browser_state.list_tabs()
+
+    @function_tool()
+    async def switch_tab(self, tab_number: Annotated[int, Field(description="Tab number to switch to (1-based index)")]) -> str:
+        """Switch to a specific tab by number (1-based index)."""
+        return await self.browser_state.switch_tab(tab_number)
+
+    @function_tool()
+    async def new_tab(self, url: Annotated[Optional[str], Field(description="Optional URL to navigate to in the new tab")] = None) -> str:
+        """Create a new browser tab, optionally navigating to a URL."""
+        return await self.browser_state.new_tab(url)
+
+    @function_tool()
+    async def close_tab(self, tab_number: Annotated[int, Field(description="Tab number to close (1-based index)")]) -> str:
+        """Close a specific tab by number (1-based index)."""
+        return await self.browser_state.close_tab(tab_number)
+
+    @function_tool()
     async def send_message(self, message: Annotated[str, Field(description="The message to send to the user")]) -> str:
         """Sends a message to the user in the chat."""
         await self._send_message(message)
@@ -275,6 +301,12 @@ Browser Control:
 - "go back": Navigates back in browser history
 - "go forward": Navigates forward in browser history
 - "reload": Reloads the current page
+
+Tab Management:
+- "list tabs": Shows all open browser tabs with their titles and URLs
+- "switch to tab [number]": Switches to a specific tab by number
+- "new tab [url]": Creates a new tab, optionally navigating to a URL
+- "close tab [number]": Closes a specific tab by number
 
 Scrolling:
 - "scroll down [pixels]": Scrolls down by specified pixels (e.g., "scroll down 200")
