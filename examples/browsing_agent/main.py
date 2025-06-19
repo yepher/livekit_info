@@ -61,6 +61,9 @@ class SimpleAgent(Agent):
                 Quick Actions:
                 - "open LiveKit Help": Opens browser to LiveKit documentation for easy testing
 
+                URL Sharing:
+                - "get current url" or "what's the current page url": Gets the URL of the currently active tab
+
                 Scrolling:
                 - "scroll down [pixels]": Scrolls down by specified pixels (default 100)
                 - "scroll up [pixels]": Scrolls up by specified pixels (default 100)
@@ -290,7 +293,10 @@ class SimpleAgent(Agent):
         
         return await self.browser_state.perform_action("navigate_to", url="https://deepwiki.com/livekit/livekit_composite")
 
-
+    @function_tool()
+    async def get_current_url(self) -> str:
+        """Gets the URL of the currently active tab."""
+        return await self.browser_state.perform_action("get_current_url")
 
     @function_tool()
     async def send_message(self, message: Annotated[str, Field(description="The message to send to the user")]) -> str:
@@ -325,6 +331,9 @@ Tab Management:
 
 Quick Actions:
 - "open LiveKit Help": Opens browser to LiveKit documentation for easy testing
+
+URL Sharing:
+- "get current url": Gets the URL of the currently active tab
 
 Scrolling:
 - "scroll down [pixels]": Scrolls down by specified pixels (e.g., "scroll down 200")

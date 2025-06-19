@@ -662,6 +662,12 @@ class BrowserState:
                 tab_index = kwargs.get("tab_index", 1)
                 return await self.close_tab(tab_index)
             
+            elif action == "get_current_url":
+                if self.page:
+                    url = self.page.url
+                    return f"Current page URL: {url}"
+                return "No active page available."
+            
             else:
                 return f"Unknown action: {action}"
 
@@ -833,4 +839,4 @@ class BrowserState:
 
     async def check_new_tab_notification(self) -> str:
         """Deprecated - now automatically switches to new tabs instead of notifications."""
-        return None                                                 
+        return None                                                               
