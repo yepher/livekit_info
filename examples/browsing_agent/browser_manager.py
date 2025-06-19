@@ -347,6 +347,7 @@ class BrowserState:
         self.pages = []
         self.active_tab_index = 0
         self.context = None
+        self.pending_new_tab_notification = None
 
     async def check_and_recover(self) -> bool:
         """Checks if the browser is still responsive and recovers if needed."""
@@ -674,6 +675,7 @@ class BrowserState:
         try:
             self.pages.append(page)
             logger.info(f"New tab detected. Total tabs: {len(self.pages)}")
+            self.pending_new_tab_notification = len(self.pages)
         except Exception as e:
             logger.error(f"Error handling new page: {e}")
 
@@ -805,4 +807,20 @@ class BrowserState:
             
         except Exception as e:
             logger.error(f"Error closing tab {tab_index}: {e}")
-            return f"Failed to close tab {tab_index}." 
+            return f"Failed to close tab {tab_index}."
+
+    async def check_new_tab_notification(self) -> str:
+        """Checks if there's a pending new tab notification and returns appropriate message."""
+        if self.pending_new_tab_notification is not None:
+            tab_number = self.pending_new_tab_notification
+            self.pending_new_tab_notification = None
+            
+            try:
+                new_tab_page = self.pages[tab_number - 1]
+                title = await new_tab_page.title()
+                return f"A new tab was automatically opened: Tab {tab_number} - {title}. Would you like me to switch to it? Just say 'switch to tab {tab_number}' or 'yes'."
+            except Exception as e:
+                logger.error(f"Error getting new tab info: {e}")
+                return f"A new tab was automatically opened (Tab {tab_number}). Would you like me to switch to it? Just say 'switch to tab {tab_number}' or 'yes'."
+        
+        return None    
