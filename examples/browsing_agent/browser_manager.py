@@ -434,12 +434,16 @@ class BrowserState:
                 
                 self.context.on("page", self._on_new_page)
                 
+                self._initializing_browser = True
+                
                 self.page = await self.context.new_page()
                 self.pages = [self.page]
                 self.active_tab_index = 0
                 self.is_open = True
                 self.last_update_time = time.time()
                 self.automation = BrowserAutomation(self.page)
+                
+                self._initializing_browser = False
 
                 # Navigate to default page
                 await self.automation.navigate_to(DEFAULT_URL)
@@ -673,10 +677,13 @@ class BrowserState:
     def _on_new_page(self, page):
         """Handler for when a new page/tab is opened automatically."""
         try:
-            self.pages.append(page)
-            logger.info(f"New tab detected. Total tabs: {len(self.pages)}")
-            self.pending_new_tab_notification = len(self.pages)
-            logger.info(f"Set pending_new_tab_notification to: {self.pending_new_tab_notification}")
+            if not getattr(self, '_creating_manual_tab', False) and not getattr(self, '_initializing_browser', False):
+                self.pages.append(page)
+                logger.info(f"Automatic new tab detected. Total tabs: {len(self.pages)}")
+                self.pending_new_tab_notification = len(self.pages)
+                logger.info(f"Set pending_new_tab_notification to: {self.pending_new_tab_notification}")
+            else:
+                logger.info(f"Manual tab creation detected, not triggering notification")
         except Exception as e:
             logger.error(f"Error handling new page: {e}")
 
@@ -742,6 +749,8 @@ class BrowserState:
             return "Browser is not open. Please open it first."
         
         try:
+            self._creating_manual_tab = True
+            
             new_page = await self.context.new_page()
             self.pages.append(new_page)
             
@@ -768,6 +777,8 @@ class BrowserState:
         except Exception as e:
             logger.error(f"Error creating new tab: {e}")
             return "Failed to create new tab."
+        finally:
+            self._creating_manual_tab = False
 
     async def close_tab(self, tab_index: int) -> str:
         """Closes the specified tab (1-based index)."""
@@ -831,4 +842,4 @@ class BrowserState:
                 return message
         
         logger.info("No pending new tab notification")
-        return None       
+        return None              
