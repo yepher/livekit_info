@@ -298,11 +298,17 @@ class SimpleAgent(Agent):
 
     async def _check_new_tab_notifications(self):
         """Checks for and handles new tab notifications."""
+        logger.info("_check_new_tab_notifications called")
         if self.browser_state.is_open:
             notification = await self.browser_state.check_new_tab_notification()
             if notification:
+                logger.info(f"Sending notification to user: {notification}")
                 await self._send_message(notification)
                 return True
+            else:
+                logger.info("No notification to send")
+        else:
+            logger.info("Browser not open, skipping notification check")
         return False
 
     @function_tool()
