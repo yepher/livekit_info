@@ -202,6 +202,12 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
       - [Typical usage](#typical-usage)
       - [Interaction with AgentActivity and IO](#interaction-with-agentactivity-and-io)
       - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
+    - [RunContext architecture and usage](#runcontext-architecture-and-usage)
+      - [Purpose](#purpose)
+      - [Structure](#structure)
+      - [API](#api)
+      - [Typical usage](#typical-usage)
+      - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
     - [AgentActivity architecture and usage](#agentactivity-architecture-and-usage)
       - [Purpose](#purpose)
       - [High-level architecture](#high-level-architecture)
@@ -211,6 +217,50 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
       - [Generation paths](#generation-paths)
       - [Typical flow](#typical-flow)
       - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
+    - [LLM architecture and usage](#llm-architecture-and-usage)
+      - [Purpose](#purpose)
+      - [High-level architecture](#high-level-architecture)
+      - [Public types and exports](#public-types-and-exports)
+      - [Non-realtime LLM: `llm.ts`](#non-realtime-llm-llmts)
+      - [Realtime model: `realtime.ts`](#realtime-model-realtimets)
+      - [Provider format shims](#provider-format-shims)
+      - [Integration points](#integration-points)
+      - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
+    - [STT architecture and usage](#stt-architecture-and-usage)
+      - [Purpose](#purpose)
+      - [High-level architecture](#high-level-architecture)
+      - [Base types and events](#base-types-and-events)
+      - [STT abstract class](#stt-abstract-class)
+      - [SpeechStream](#speechstream)
+      - [StreamAdapter for non-streaming providers](#streamadapter-for-non-streaming-providers)
+      - [Integration points](#integration-points)
+      - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
+    - [TTS architecture and usage](#tts-architecture-and-usage)
+      - [Purpose](#purpose)
+      - [High-level architecture](#high-level-architecture)
+      - [Base interfaces](#base-interfaces)
+      - [Streaming adapter](#streaming-adapter)
+      - [Integration points](#integration-points)
+      - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
+    - [Metrics architecture and usage](#metrics-architecture-and-usage)
+      - [Purpose](#purpose)
+      - [High-level architecture](#high-level-architecture)
+      - [Types (`base.ts`)](#types-basets)
+      - [Emission points](#emission-points)
+      - [Logging and usage aggregation](#logging-and-usage-aggregation)
+      - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
+    - [Using metrics to locate and reduce latency](#using-metrics-to-locate-and-reduce-latency)
+      - [VAD (vad_metrics)](#vad-vad_metrics)
+      - [STT (stt_metrics) and EOU](#stt-stt_metrics-and-eou)
+      - [Endpointing (eou_metrics)](#endpointing-eou_metrics)
+      - [LLM (llm_metrics)](#llm-llm_metrics)
+      - [Realtime model (realtime_model_metrics)](#realtime-model-realtime_model_metrics)
+      - [TTS (tts_metrics)](#tts-tts_metrics)
+      - [Playback and synchronization](#playback-and-synchronization)
+      - [Cross‑cutting tactics](#crosscutting-tactics)
+      - [Quick triage playbook](#quick-triage-playbook)
+      - [Target ranges (rough guidelines)](#target-ranges-rough-guidelines)
+      - [Relationships between metrics](#relationships-between-metrics)
 - [Common Terms](#common-terms)
   - [Helpful Overviews](#helpful-overviews)
   - [TODO](#todo)
@@ -2408,6 +2458,60 @@ handle.interrupt();
 
 
 
+### RunContext architecture and usage
+
+This document explains `agents/src/voice/run_context.ts`, a simple data holder passed around during a single generation/tool execution, providing access to the session, current speech handle, and the active function call.
+
+#### Purpose
+
+- Bundle context for a single reply or tool execution step so code can access:
+  - The current `AgentSession` (to read options, emit events, access IO, etc.).
+  - The current `SpeechHandle` (to check interruption state, chain completion, etc.).
+  - The current `FunctionCall` (when executing tools).
+- Provide typed access to per-session `userData` with generic typing.
+
+#### Structure
+
+```mermaid
+classDiagram
+  class RunContext~UserData~ {
+    +session: AgentSession~UserData~
+    +speechHandle: SpeechHandle
+    +functionCall: FunctionCall
+    +userData(): UserData
+  }
+```
+
+#### API
+
+- Constructor: `new RunContext(session, speechHandle, functionCall)`
+- Getter: `userData` – returns `session.userData` with type parameter `UserData`.
+
+#### Typical usage
+
+```ts
+function executeTool(ctx: RunContext<MyUserData>) {
+  const { userData, speechHandle } = ctx;
+  if (speechHandle.interrupted) return;
+  // use userData to customize behavior
+}
+```
+
+#### Known shortcomings and probable bugs
+
+- No nullability guards
+  - Assumes `session`, `speechHandle`, and `functionCall` are always provided; callers must ensure they’re valid.
+
+- Mutability exposure
+  - Exposes references to mutable `session` and `speechHandle`; misuse can alter session state from deep within tools. Consider narrower interfaces for tool code.
+
+- Minimal surface area
+  - No helper methods for common operations (emitting events, interrupt checks with timeouts, etc.). Keeping it simple is fine, but document intended usage patterns.
+
+
+
+
+
 ### AgentActivity architecture and usage
 
 This document explains `agents/src/voice/agent_activity.ts`, the core runtime that orchestrates recognition (VAD/STT), generation (LLM/RealtimeModel + TTS), speech queueing/interruptions, and tool execution for a single active agent in an `AgentSession`.
@@ -2511,6 +2615,522 @@ sequenceDiagram
 
 - Tool step cap
   - `maxToolSteps` enforcement is correct, but repeated tool executions within one step aren’t capped here; ensure `performToolExecutions` bound checks align.
+
+
+
+
+
+### LLM architecture and usage
+
+This document covers the LLM components used by the voice pipeline:
+- Public types (`agents/src/llm/index.ts`)
+- Base non-realtime LLM (`agents/src/llm/llm.ts`)
+- Realtime model/session (`agents/src/llm/realtime.ts`)
+- Provider format shims (`agents/src/llm/provider_format/*`)
+
+#### Purpose
+
+- Provide a common streaming interface for chat completions and tool calls (LLM), and a separate interface for realtime multimodal models (RealtimeModel).
+- Normalize chat contexts across providers via provider-format shims.
+- Emit metrics used by `AgentActivity` and the session.
+
+#### High-level architecture
+
+```mermaid
+graph TD
+  subgraph Non-realtime
+    LLM["LLM"] --> LLMStream["LLMStream (async iterator of ChatChunk)"]
+  end
+  subgraph Realtime
+    RM["RealtimeModel"] --> RS["RealtimeSession"]
+  end
+  ChatCtx["ChatContext"] --> LLM
+  ChatCtx --> RS
+  Tools["ToolContext"] --> LLM & RS
+  ProviderFmt["provider_format toChatCtx"] --> ChatCtx
+```
+
+#### Public types and exports
+
+- `index.ts` re-exports ToolContext helpers, ChatContext types, ProviderFormat, `LLM`/`LLMStream` types, `RealtimeModel`/`RealtimeSession` types, and utilities (oai params, tool execution helpers).
+
+#### Non-realtime LLM: `llm.ts`
+
+- `LLM`
+  - Abstract class with `chat({ chatCtx, toolCtx, connOptions, parallelToolCalls, toolChoice, extraKwargs }): LLMStream`.
+  - `label()` and `model` for metrics and provider identification.
+  - Lifecycle hooks: `prewarm()`, `aclose()`.
+
+- `LLMStream`
+  - Async iterator yielding `ChatChunk` { id, delta?, usage? }.
+  - Internals: two `AsyncIterableQueue`s (queue→output). `monitorMetrics()` forwards queued events to output and collects usage to emit `LLMMetrics` on stream end/cancel.
+  - Aborts on `close()`, closing output and setting `closed`.
+
+Sequence:
+```mermaid
+sequenceDiagram
+  participant App
+  participant L as LLM
+  participant S as LLMStream
+
+  App->>L: chat({chatCtx, toolCtx, toolChoice,...})
+  L-->>App: LLMStream
+  loop chunks
+    S-->>App: ChatChunk(delta/usage)
+  end
+  S-->>App: metrics_collected on end/cancel
+```
+
+Notes:
+- `tokensPerSecond` uses seconds from hrtime; verify divisor for nanoseconds.
+
+#### Realtime model: `realtime.ts`
+
+- `RealtimeModel`
+  - Initialized with `RealtimeCapabilities` (messageTruncation, turnDetection, userTranscription, autoToolReplyGeneration).
+  - `session()` returns a `RealtimeSession` instance; `close()` shuts down model resources.
+
+- `RealtimeSession` (EventEmitter)
+  - Input: `setInputAudioStream()`, `pushAudio()`, `commitAudio()`, `clearAudio()`.
+  - Output: `generateReply()` → `GenerationCreatedEvent { messageStream, functionStream, userInitiated }`.
+  - Events: `generation_created`, `input_speech_started/stopped`, `input_audio_transcription_completed`, `metrics_collected`, `error`, `reconnected`.
+  - Control: `updateInstructions`, `updateChatCtx`, `updateTools`, `updateOptions({ toolChoice })`, `interrupt()`, `truncate({ messageId, audioEndMs })`.
+  - Internals: a background task drains a deferred input audio stream and calls `pushAudio`.
+
+#### Provider format shims
+
+- Purpose: transform our `ChatContext` to provider-native payloads.
+- `provider_format/index.ts`:
+  - `toChatCtx('openai'|'google', chatCtx, injectDummyUserMessage=true)` delegates to provider-specific transformers; throws on unsupported format.
+
+- OpenAI (`openai.ts`)
+  - Groups tool calls, builds `messages[]` with `role` and mixed `content` (text and image_url). Uses `serializeImage` to ensure data URL vs external URL.
+  - Tool calls as `tool_calls` and function outputs as `role: tool` messages.
+
+- Google (`google.ts`)
+  - Returns `[turns[], { systemMessages }]`. Flattens grouped tool calls, maps roles to `user`/`model`, collects parts (text, inlineData/fileData for images, functionCall/functionResponse). Optionally injects a trailing dummy user turn to satisfy generation constraints.
+
+#### Integration points
+
+- `AgentActivity.pipelineReplyTask` uses `LLM.chat()`; tool calls are consumed via `performToolExecutions` using `ChatChunk.delta.toolCalls` and usage for metrics.
+- `AgentActivity.realtime*` uses `RealtimeModel` and `RealtimeSession` for streaming text/audio and tool calls.
+- `AgentSession` tags `LLMMetrics` with `speechId` through `AgentActivity`’s async local storage.
+
+#### Known shortcomings and probable bugs
+
+- LLMStream metrics duration divisor
+  - `tokensPerSecond` divides tokens by seconds computed as `Math.trunc(Number(duration / 1e9))`; if duration is small, truncation may cause divide-by-zero. Consider using floating seconds.
+
+- RealtimeSession input drain
+  - `_mainTaskImpl` never releases the reader; on `close()`, only cancels the task. Ensure the deferred stream is detached or reader released to avoid leaks.
+
+- Provider shims error handling
+  - Provider transformers throw on unsupported types; upstream should surface errors near providers to aid debugging.
+
+- Google format injection
+  - The dummy user turn can change model behavior. Make it configurable at call sites where provider expects it.
+
+
+
+
+
+### STT architecture and usage
+
+This document covers the speech-to-text base types and streaming model:
+- Base and events/metrics (`agents/src/stt/stt.ts`)
+- Streaming adapter for non-streaming providers (`agents/src/stt/stream_adapter.ts`)
+
+#### Purpose
+
+- Normalize STT providers behind an abstract interface that supports both request/response and streaming.
+- Emit standardized events (`SpeechEventType`) and metrics (`STTMetrics`) for the voice pipeline.
+- Provide a VAD-backed adapter to segment audio for providers lacking streaming endpoints.
+
+#### High-level architecture
+
+```mermaid
+graph TD
+  STT["STT (abstract)"] -->|"stream()"| SS["SpeechStream (async iterator)"]
+  SS -->|"events"| App["AudioRecognition / AgentActivity"]
+  subgraph "Adapter"
+    A["StreamAdapter (wrap non-streaming STT + VAD)"]
+    AW["StreamAdapterWrapper"]
+  end
+  A --> AW
+  VAD["VAD"] --> AW
+```
+
+#### Base types and events
+
+- `SpeechEventType`:
+  - `START_OF_SPEECH`, `INTERIM_TRANSCRIPT`, `FINAL_TRANSCRIPT`, `END_OF_SPEECH`, `RECOGNITION_USAGE`.
+- `SpeechEvent`: `type`, `alternatives?` (array of `SpeechData`), optional `requestId`, `recognitionUsage`.
+- `STTCapabilities`: `streaming`, `interimResults`.
+- Metrics (`STTMetrics`): emitted on `recognize()` completion (non-streaming) and on `RECOGNITION_USAGE` (streaming), including duration, label, audioDuration, streamed flag.
+
+#### STT abstract class
+
+- `recognize(AudioBuffer) => Promise<SpeechEvent>`
+  - Times the call and emits metrics; subclasses implement `_recognize`.
+- `stream(): SpeechStream`
+  - Returns a provider-implemented stream class with push/flush/end semantics.
+- `capabilities`: advertises streaming/interim support.
+
+#### SpeechStream
+
+- Async iterator with internal queues for input and output.
+- Accepts `AudioFrame` via `updateInputStream()` or `pushFrame()` and handles optional resampling to `neededSampleRate`.
+- `flush()` pushes a sentinel to request immediate processing; `endInput()` stops new input.
+- `monitorMetrics()` forwards queued events to output and emits `STTMetrics` on `RECOGNITION_USAGE` events.
+
+Typical sequence:
+```mermaid
+sequenceDiagram
+  participant App
+  participant S as SpeechStream
+
+  App->>S: updateInputStream(audio)
+  loop
+    S-->>App: SpeechEvent (interim/final/start/end/usage)
+  end
+```
+
+#### StreamAdapter for non-streaming providers
+
+- `StreamAdapter(stt, vad)` exposes `stream()` returning `StreamAdapterWrapper` and proxies `recognize()`.
+- `StreamAdapterWrapper`:
+  - Creates a `VADStream` and forwards input audio; on VAD `START_OF_SPEECH`, emits `START_OF_SPEECH`; on `END_OF_SPEECH`, calls underlying `stt.recognize(ev.frames)` and emits the resulting final transcript (if non-empty) followed by `END_OF_SPEECH`.
+  - Disables the base `monitorMetrics()`; metrics still flow through from the wrapped STT via the adapter’s event proxy.
+
+Flow:
+```mermaid
+sequenceDiagram
+  participant App
+  participant W as StreamAdapterWrapper
+  participant V as VADStream
+  participant P as NonStreamingSTT
+
+  App->>W: pushFrame/flush/endInput
+  W->>V: forward frames/flush
+  alt START_OF_SPEECH
+    V-->>W: VADEvent START
+    W-->>App: SpeechEvent START_OF_SPEECH
+  end
+  alt END_OF_SPEECH
+    V-->>W: VADEvent END (frames)
+    W->>P: recognize(frames)
+    P-->>W: SpeechEvent FINAL_TRANSCRIPT
+    W-->>App: FINAL_TRANSCRIPT, END_OF_SPEECH
+  end
+```
+
+#### Integration points
+
+- Used by AudioRecognition (STT task) and AgentActivity (interim/final to events) in the voice pipeline.
+- In Agent.default.sttNode, if provider is non-streaming, it wraps via STTStreamAdapter (requires a VAD).
+
+#### Known shortcomings and probable bugs
+
+- SpeechStream monitor closes output after queue drains
+  - Ensure providers emit `RECOGNITION_USAGE` periodically; otherwise metrics may never be emitted for streaming paths.
+
+- Adapter emits END before FINAL on edge cases
+  - If `recognize()` returns an event without `.alternatives[0].text`, adapter drops it and only END_OF_SPEECH reaches listeners. Consider emitting an empty FINAL with timing metadata for consistency.
+
+- Resampler lifecycle
+  - `SpeechStream` creates an `AudioResampler` on the first rate mismatch; no explicit teardown. If per-stream reuse leaks, add close support.
+
+- Error propagation
+  - Adapter catches recognize errors and logs them, continuing the loop; consider surfacing an `Error` event to upstream for observability.
+
+
+
+
+
+### TTS architecture and usage
+
+This document covers the text-to-speech base interfaces and streaming model:
+- Base/capabilities (`agents/src/tts/tts.ts`)
+- Streaming adapter using a sentence tokenizer (`agents/src/tts/stream_adapter.ts`)
+
+#### Purpose
+
+- Normalize TTS providers behind an abstract interface that supports request/response and streaming.
+- Emit standardized metrics (`TTSMetrics`) including time to first byte, duration, characters, and audio duration.
+- Provide an adapter that segments text (by sentences) and synthesizes incrementally in a stream.
+
+#### High-level architecture
+
+```mermaid
+graph TD
+  TTS["TTS (abstract)"] -->|"stream()"| Syn["SynthesizeStream (async iterator)"]
+  Syn -->|"SynthesizedAudio"| App["AgentActivity / RoomIO"]
+  subgraph Adapter
+    SA["StreamAdapter (wrap TTS + SentenceTokenizer)"]
+    SAW["StreamAdapterWrapper"]
+  end
+  SA --> SAW
+  Tok["SentenceTokenizer"] --> SAW
+```
+
+#### Base interfaces
+
+- `TTS(sampleRate, numChannels, capabilities)`
+  - `capabilities.streaming` indicates if provider supports streaming.
+  - `synthesize(text): ChunkedStream` for single-shot synthesis.
+  - `stream(): SynthesizeStream` for incremental text → audio.
+
+- `SynthesizeStream`
+  - Async iterator yielding `SynthesizedAudio` ({ requestId, segmentId, frame, deltaText?, final }).
+  - Input via `updateInputStream(textReadable)` or `pushText(text)`; `flush()` to segment; `endInput()` to finish.
+  - Collects metrics (TTFB, duration, characters, audioDuration), emitted via `metrics_collected`.
+  - Aborts on `close()`; detaches deferred stream and closes queues.
+
+- `ChunkedStream`
+  - Async iterator for one-shot synthesis; `collect()` merges frames; emits metrics on completion.
+
+#### Streaming adapter
+
+- `StreamAdapter(tts, sentenceTokenizer)` proxies metrics from underlying TTS and returns `StreamAdapterWrapper`.
+- `StreamAdapterWrapper`:
+  - Creates a `SentenceStream` from the tokenizer.
+  - Forwards input text and flush signals to the tokenizer; for each sentence token, starts a synthesis task with `tts.synthesize(token)`.
+  - Queues audio frames in order, waiting for the previous sentence’s audio to finish before enqueueing the next (`await prevTask.result`).
+  - Emits `END_OF_STREAM` when the sentence stream is exhausted.
+
+Flow:
+```mermaid
+sequenceDiagram
+  participant App
+  participant W as StreamAdapterWrapper
+  participant Tok as SentenceStream
+  participant Prov as TTS Provider
+
+  App->>W: updateInputStream / pushText / flush / endInput
+  W->>Tok: pushText / flush
+  loop sentences
+    Tok-->>W: token (sentence)
+    W->>Prov: synthesize(token)
+    Prov-->>W: SynthesizedAudio frames
+    W-->>App: frames
+  end
+  W-->>App: END_OF_STREAM
+```
+
+#### Integration points
+
+- Used by `AgentActivity.pipelineReplyTask` and `say()` to stream synthesized audio to `AgentSession.output.audio`.
+- `TranscriptionSynchronizer` may couple agent transcript progress with audio playout; `SynthesizedAudio.deltaText` can be used by providers to supply incremental text.
+
+#### Known shortcomings and probable bugs
+
+- Duration units
+  - Audio duration accumulates seconds (`samplesPerChannel / sampleRate`) but is labeled as a duration; ensure consistent units across metrics and synchronizer.
+
+- SynthesizeStream mainTask/metrics coupling
+  - If no text arrives, `monitorMetrics` might not start; `mainTask` closes output directly. Verify downstream handles empty streams.
+
+- Adapter ordering and backpressure
+  - Sentences are serialized by awaiting the previous task; long sentences can block subsequent ones. Consider chunking or overlapping if provider supports it.
+
+- Error propagation
+  - Adapter does not surface provider synthesis errors to the app; consider emitting an error event.
+
+
+
+
+
+### Metrics architecture and usage
+
+This document describes the unified metrics model under `agents/src/metrics/**`:
+- Types (`base.ts`), logging helpers (`utils.ts`), and usage aggregation (`usage_collector.ts`).
+
+#### Purpose
+
+- Provide consistent, strongly-typed telemetry across LLM, STT, TTS, VAD, end-of-user (EOU), and RealtimeModel components.
+- Attach `speechId` where appropriate so UI/logs can correlate metrics to a specific speech handle.
+- Offer utilities to log metrics and compute simple usage summaries (tokens, characters, audio duration).
+
+#### High-level architecture
+
+```mermaid
+graph TD
+  LLM["LLM/LLMStream"] --> M["AgentMetrics"]
+  RT["RealtimeSession"] --> M
+  STT["STT/SpeechStream"] --> M
+  TTS["TTS/SynthesizeStream/ChunkedStream"] --> M
+  VAD["VAD/VADStream"] --> M
+  EOU["AgentActivity (EOU)"] --> M
+  M --> Log["logMetrics"]
+  M --> Use["UsageCollector"]
+```
+
+#### Types (`base.ts`)
+
+- `AgentMetrics`: union of
+  - `LLMMetrics`: timings, token counts, tokensPerSecond, optional `speechId`.
+  - `STTMetrics`: duration (0 for streaming), audioDuration (seconds), streamed flag.
+  - `TTSMetrics`: ttfb, duration, audioDuration (seconds), cancelled, charactersCount, streamed, optional `segmentId`/`speechId`.
+  - `VADMetrics`: idleTime since last activity, inferenceDurationTotal, inferenceCount.
+  - `EOUMetrics`: endOfUtteranceDelay, transcriptionDelay, onUserTurnCompletedDelay, optional `speechId`.
+  - `RealtimeModelMetrics`: rich token counters (input/output/total), per-modality details, timings.
+
+Units convention:
+- All timestamps are epoch milliseconds; durations are seconds unless called out; some sources calculate with `process.hrtime` and convert to milliseconds.
+
+#### Emission points
+
+- LLM: `LLMStream.monitorMetrics()` emits on stream end/cancel.
+- STT: `STT.recognize()` emits per call; `SpeechStream.monitorMetrics()` emits for streaming usage events.
+- TTS: `SynthesizeStream.monitorMetrics()` emits per segment and on end; `ChunkedStream.monitorMetrics()` emits for single-shot.
+- VAD: `VADStream.monitorMetrics()` emits periodically based on `updateInterval`.
+- EOU: `AgentActivity.userTurnCompleted` emits one `EOUMetrics` per committed turn.
+- Realtime: provider implementation emits `realtime_model_metrics`; `AgentActivity` can tag `speechId` via async-local storage.
+
+#### Logging and usage aggregation
+
+- `utils.logMetrics(metrics)`
+  - Pretty-prints per-type metrics; rounds select fields; logs via the shared logger.
+
+- `UsageCollector`
+  - `collect(metrics)`: accumulates LLM tokens (or Realtime input/output), TTS characters, and STT audio duration.
+  - `getSummary()`: returns `{ llmPromptTokens, llmPromptCachedTokens, llmCompletionTokens, ttsCharactersCount, sttAudioDuration }`.
+
+#### Known shortcomings and probable bugs
+
+- Duration unit inconsistencies
+  - Some metrics compute durations in seconds while others are logged/rounded assuming milliseconds. Standardize or document clearly per field.
+
+- Missing `speechId` propagation
+  - Only certain emitters attach `speechId`. Ensure propagation in realtime metrics and adapter proxies where needed.
+
+- STT streaming usage
+  - `RECOGNITION_USAGE` emission depends on provider behavior; without it, streaming STT yields no metrics beyond non-streaming calls.
+
+- UsageCollector gaps
+  - Does not aggregate VAD/EOU; depending on product needs, consider adding counts/delays for monitoring turn performance.
+
+
+
+
+
+### Using metrics to locate and reduce latency
+
+This guide explains how to interpret emitted metrics (VAD, STT, EOU, LLM, RealtimeModel, TTS) to find latency hotspots and apply targeted fixes.
+
+#### VAD (vad_metrics)
+
+- What to watch: `inferenceDurationTotal`/`inferenceCount` (avg/window), `idleTime` between activity.
+- Symptoms: High average inference time → VAD behind realtime; delayed END_OF_SPEECH.
+- Fixes:
+  - Lower sample rate/window size; use QUICK resampler; prefer a faster device path.
+  - Reduce copies/resampling; ensure one resample hop.
+  - Tune Silero options: `minSilenceDuration`, `minSpeechDuration`, `activationThreshold`.
+
+#### STT (stt_metrics) and EOU
+
+- What to watch: `stt_metrics.duration` (non‑streaming), and EOU `transcriptionDelay` (END_OF_SPEECH → final text).
+- Symptoms: Large `transcriptionDelay` → slow STT finalization; high `duration` for non‑streaming.
+- Fixes:
+  - Prefer streaming STT; for non‑streaming, use the VAD stream adapter and inject brief silence on commit to flush.
+  - Reduce audio chunk size; match provider sample rate; avoid resampler churn.
+  - Choose lower‑latency model/tier; keep region proximate.
+
+#### Endpointing (eou_metrics)
+
+- What to watch: `endOfUtteranceDelay`, `transcriptionDelay`, `onUserTurnCompletedDelay`.
+- Symptoms:
+  - High `endOfUtteranceDelay` → conservative endpointing or indecisive model.
+  - High `onUserTurnCompletedDelay` → slow user callback.
+- Fixes:
+  - Tune min/max endpointing delay; adjust EOU unlikely thresholds; simplify or offload work in `onUserTurnCompleted`.
+
+#### LLM (llm_metrics)
+
+- What to watch: `ttft` (first token), `duration`, `tokensPerSecond`.
+- Symptoms: High `ttft` → cold starts/large prompts/region latency; low `tokensPerSecond` → throttling or heavy model.
+- Fixes:
+  - Prewarm; trim prompt/context; cache tool schemas; colocate with provider; pick a faster model.
+
+#### Realtime model (realtime_model_metrics)
+
+- What to watch: `ttft`, `duration`, `inputTokens`/`outputTokens`/`totalTokens`, `tokensPerSecond`.
+- Symptoms: Slow `ttft` or tokens/s → server latency or context/tool overhead.
+- Fixes: Reduce context, disable auto tool replies if unneeded, minimize tool schema churn, target an optimal region/instance.
+
+#### TTS (tts_metrics)
+
+- What to watch: `ttfb` (first audio frame), `duration` vs `charactersCount`, `audioDuration`.
+- Symptoms: High `ttfb` → voice/model warmup or provider latency; slow throughput → long segments or heavy voice.
+- Fixes:
+  - Use streaming voices; tokenize into shorter sentences; prewarm voices; choose faster voice; lower sample rate/channels if acceptable.
+
+#### Playback and synchronization
+
+- What to watch: `onPlaybackFinished.playbackPosition` vs generation end; `synchronizedTranscript` availability.
+- Symptoms: Audio finishes long after text; large queued audio.
+- Fixes: Reduce output queue size; emit first frames sooner; lower sample rate to shrink frames; ensure streaming end‑to‑end.
+
+#### Cross‑cutting tactics
+
+- Correlate by `speechId`: AgentActivity tags LLM/TTS/EOU to build a per‑reply timeline.
+- Derive stage latencies:
+  - User turn to audible agent ≈ `endOfUtteranceDelay + transcriptionDelay + llm.ttft + tts.ttfb`.
+- Enable `logMetrics` to sanity‑check units and outliers quickly.
+- Run workers close to media/LLM/TTS regions; avoid unnecessary resampling; minimize data copies.
+
+#### Quick triage playbook
+
+- Agent starts speaking late: check LLM `ttft`, TTS `ttfb`, EOU `endOfUtteranceDelay`.
+- Agent responds long after user stops: check STT `transcriptionDelay` and endpointing thresholds.
+- Choppy/laggy stream: check tokens/s (LLM/Realtime), TTS throughput (duration vs chars), VAD inference time spikes.
+
+#### Target ranges (rough guidelines)
+
+- VAD avg/window: < 10–20 ms; STT `transcriptionDelay`: < 300–800 ms; LLM `ttft`: < 300–800 ms; Realtime `ttft`: < 250–600 ms; TTS `ttfb`: < 150–500 ms (provider/region dependent).
+
+#### Relationships between metrics
+
+```mermaid
+graph TD
+  subgraph "User input"
+    A["VAD metrics\n(inference avg, idleTime)"]
+    S["STT metrics\n(duration, audioDuration)"]
+  end
+
+  subgraph "Turn decision"
+    E["EOU metrics\n(endOfUtteranceDelay, transcriptionDelay, onUserTurnCompletedDelay)"]
+  end
+
+  subgraph "Agent generation"
+    L["LLM metrics\n(ttft, duration, tokens/s)"]
+    R["Realtime metrics\n(ttft, tokens, tokens/s)"]
+    T["TTS metrics\n(ttfb, duration, audioDuration)"]
+  end
+
+  A -->|"END_OF_SPEECH timing"| E
+  S -->|"final transcript latency"| E
+  E -->|"reply start"| L
+  E -->|"reply start"| R
+  L -->|"text chunks"| T
+  R -->|"text/audio"| T
+  T -->|"onPlaybackFinished\n(playbackPosition, synchronizedTranscript)"| F["Playback"]
+
+  style A fill:#eef,stroke:#99f
+  style S fill:#eef,stroke:#99f
+  style E fill:#efe,stroke:#9f9
+  style L fill:#fee,stroke:#f99
+  style R fill:#fee,stroke:#f99
+  style T fill:#ffe,stroke:#dd0
+  style F fill:#eee,stroke:#bbb
+
+  subgraph "Correlation"
+    X["speechId"]
+  end
+  X --- L
+  X --- T
+  X --- E
+```
 
 
 
