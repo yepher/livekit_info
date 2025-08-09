@@ -141,6 +141,25 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
       - [State accessors](#state-accessors)
       - [Known behaviors and notes](#known-behaviors-and-notes)
       - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
+    - [AudioRecognition architecture and usage](#audiorecognition-architecture-and-usage)
+      - [Purpose](#purpose)
+      - [High-level architecture](#high-level-architecture)
+      - [Construction](#construction)
+      - [Key responsibilities](#key-responsibilities)
+      - [Typical sequence](#typical-sequence)
+      - [API surface](#api-surface)
+      - [End-of-turn scheduling](#end-of-turn-scheduling)
+      - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
+      - [Integration notes](#integration-notes)
+    - [Voice Agent architecture and usage](#voice-agent-architecture-and-usage)
+      - [Purpose](#purpose)
+      - [High-level architecture](#high-level-architecture)
+      - [Construction](#construction)
+      - [Key APIs](#key-apis)
+      - [Default node wrappers](#default-node-wrappers)
+      - [Typical usage](#typical-usage)
+      - [Tool calling context](#tool-calling-context)
+      - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
 - [Common Terms](#common-terms)
   - [Helpful Overviews](#helpful-overviews)
   - [TODO](#todo)
@@ -1625,6 +1644,235 @@ sequenceDiagram
 - No-op output change handlers
   - `onAudioOutputChanged()` and `onTextOutputChanged()` are empty; if dynamic output routing is intended, this is a gap (not strictly a bug but a missing feature).
 
+
+
+
+
+
+### AudioRecognition architecture and usage
+
+This document describes `agents/src/voice/audio_recognition.ts`, which coordinates audio ingestion, VAD, STT, and end-of-user (EOU) turn detection for voice agents.
+
+#### Purpose
+
+- Split the incoming audio stream for concurrent VAD and STT processing.
+- Maintain interim and final transcripts and user speaking state.
+- Detect the end of the user's turn (via VAD- or STT-based heuristics or a model turn detector) and notify higher layers.
+- Provide imperative helpers to commit or clear a user turn.
+
+#### High-level architecture
+
+```mermaid
+graph TD
+  IN["ReadableStream<AudioFrame>"] --> DS(DeferredReadableStream)
+  DS -->|tee| VAD_IN["VAD input"]
+  DS -->|tee| STT_IN_RAW["STT input"]
+  SIL["Silence writer"] --> STT_IN_SIL["Silence stream"]
+  STT_IN_RAW & STT_IN_SIL -->|merge| STT_IN
+
+  subgraph AudioRecognition
+    VAD_TASK["VAD task"]
+    STT_TASK["STT task"]
+    EOU["EOU scheduler"]
+  end
+
+  VAD_IN --> VAD_TASK
+  STT_IN --> STT_TASK
+  VAD_TASK --> EOU
+  STT_TASK --> EOU
+  EOU --> HOOKS["RecognitionHooks"]
+```
+
+#### Construction
+
+```ts
+const rec = new AudioRecognition({
+  recognitionHooks,            // onStartOfSpeech/onVADInferenceDone/onEndOfSpeech/.../onEndOfTurn
+  stt,                         // STTNode (ReadableStream<SpeechEvent> | null)
+  vad,                         // VAD implementation
+  turnDetector,                // optional model-based detector
+  turnDetectionMode,           // 'vad' | 'stt' | 'realtime_llm' | 'manual'
+  minEndpointingDelay,
+  maxEndpointingDelay,
+});
+
+rec.setInputAudioStream(audioStream);
+await rec.start();
+```
+
+#### Key responsibilities
+
+- VAD task
+  - Creates a `vad.stream()`, feeds it audio, and forwards `START_OF_SPEECH`, `INFERENCE_DONE`, and `END_OF_SPEECH` to hooks.
+  - Tracks `speaking` and sets `lastSpeakingTime` when speech ends; triggers EOU detection under VAD-based or STT-committed modes.
+
+- STT task
+  - Calls `stt(input)` to get a `ReadableStream<SpeechEvent>`; reads events and updates interim/final transcripts.
+  - On `FINAL_TRANSCRIPT`: appends to `audioTranscript`, clears interim, records language and time; may trigger EOU if not currently speaking.
+  - On `END_OF_SPEECH` in STT-based mode: marks `userTurnCommitted` and may trigger EOU.
+
+- EOU detection
+  - Builds a temporary `ChatContext` containing the accumulated transcript and (optionally) queries the `turnDetector` to compute an endpointing delay between `minEndpointingDelay` and `maxEndpointingDelay`.
+  - Schedules a debounced task that sleeps until `lastSpeakingTime + endpointingDelay`, then calls `hooks.onEndOfTurn({ newTranscript, transcriptionDelay, endOfUtteranceDelay })`.
+  - If the hook returns `true`, clears `audioTranscript` and resets `userTurnCommitted`.
+
+- Manual control
+  - `commitUserTurn(audioDetached: boolean)`: optionally injects ~500 ms of silence (to flush STT) and schedules EOU detection; sets `userTurnCommitted = true`.
+  - `clearUserTurn()`: clears transcripts and restarts the STT task.
+
+#### Typical sequence
+
+```mermaid
+sequenceDiagram
+  participant In as Audio input
+  participant Rec as AudioRecognition
+  participant VAD
+  participant STT
+  participant Hooks
+
+  In->>Rec: setInputAudioStream()
+  Rec->>VAD: updateInputStream()
+  Rec->>STT: start STT stream
+  VAD-->>Rec: START_OF_SPEECH
+  Rec->>Hooks: onStartOfSpeech
+  STT-->>Rec: INTERIM_TRANSCRIPT / FINAL_TRANSCRIPT
+  Rec->>Hooks: onInterimTranscript / onFinalTranscript
+  VAD-->>Rec: END_OF_SPEECH
+  Rec->>Rec: schedule EOU detection (delay)
+  Rec->>Hooks: onEndOfTurn(info)
+```
+
+#### API surface
+
+- `setInputAudioStream(stream)` / `detachInputAudioStream()`
+- `start()` / `close()`
+- `commitUserTurn(audioDetached: boolean)` / `clearUserTurn()`
+- `currentTranscript: string`
+
+#### End-of-turn scheduling
+
+- VAD-based: EOU runs after VAD emits `END_OF_SPEECH` (already waited through `silenceDuration`), plus a small endpointing delay.
+- STT-based: EOU runs after `END_OF_SPEECH` or `FINAL_TRANSCRIPT` (when not speaking), depending on mode and `userTurnCommitted`.
+- Model-based: `turnDetector.unlikelyThreshold()` and `predictEndOfTurn()` adjust the endpointing delay.
+
+#### Known shortcomings and probable bugs
+
+- Missing await on `supportsLanguage`
+  - In EOU detection, the code calls `turnDetector.supportsLanguage(this.lastLanguage)` without `await`. Since the API is async, this condition always evaluates truthy (a Promise), and the language check is skipped. It should be `if (!(await turnDetector.supportsLanguage(this.lastLanguage))) { ... }`.
+
+- `sampleRate` never set
+  - `commitUserTurn(audioDetached)` attempts to flush STT by writing silence if `this.sampleRate` is defined, but `sampleRate` is never assigned in this class. As a result, silence injection may never occur. Consider capturing the first input frame's `sampleRate` and setting `this.sampleRate`.
+
+- Transcript growth if not committed
+  - `audioTranscript` only clears when `onEndOfTurn` returns `true`. If the hook declines commitment repeatedly, transcripts will grow across attempts. Consider a cap or periodic truncation.
+
+- Potential race between VAD and STT triggers
+  - EOU can trigger off VAD `END_OF_SPEECH` and also off STT `FINAL_TRANSCRIPT` when `!speaking`. Rapid sequences may schedule overlapping tasks; cancellations help, but subtle races may persist.
+
+- STT stream type check
+  - If `stt()` does not return a `ReadableStream`, the current implementation silently does nothing beyond the type check. Consider logging a warning for non-stream outputs.
+
+- Cleanup paths
+  - VAD stream detaches and closes only via the `abort` handler; for normal completion, ensure it is closed/detached to stop background loops.
+
+#### Integration notes
+
+- Hooks typically belong to `AgentActivity`, which uses VAD events to drive turn detection and to interrupt TTS.
+- The STT stream can be a direct streaming recognizer or an adapter that segments by VAD.
+- Silence injection is only used to coax out final transcripts from STT when audio is detached (push-to-talk or manual modes).
+
+
+
+
+
+### Voice Agent architecture and usage
+
+This document covers `agents/src/voice/agent.ts`, the authoring surface for building voice agent behaviors. It provides defaults for STT/LLM/TTS nodes, manages chat context and tools, and exposes lifecycle hooks.
+
+#### Purpose
+
+- Hold the agent’s instructions, chat context, tool context, and node references (`STT`, `VAD`, `LLM/RealtimeModel`, `TTS`).
+- Offer default node wrappers that adapt non-streaming providers into streaming forms.
+- Provide hooks for entry/exit and user-turn completion.
+
+#### High-level architecture
+
+```mermaid
+graph TD
+  subgraph Agent
+    I["instructions"]
+    C["ChatContext (w/ ToolContext)"]
+    N1["STT node"]
+    N2["LLM / RealtimeModel"]
+    N3["TTS node"]
+    V["VAD (optional)"]
+  end
+  Agent -->|"default.sttNode"| STT_STREAM["stream adapter if needed"]
+  Agent -->|"default.llmNode"| LLM_STREAM["LLM chat stream"]
+  Agent -->|"default.ttsNode"| TTS_STREAM["stream adapter if needed"]
+```
+
+#### Construction
+
+```ts
+const agent = new voice.Agent({
+  instructions: 'You are helpful...',
+  chatCtx,            // optional initial ChatContext
+  tools,              // tool context, merged into internal copy
+  turnDetection,      // mode hint for session wiring
+  stt, vad, llm, tts, // optional nodes (can be provided by session/activity)
+});
+```
+
+#### Key APIs
+
+- Getters: `vad`, `stt`, `llm`, `tts`, `chatCtx` (readonly copy), `instructions`, `toolCtx`, `session` (through `AgentActivity`).
+- Lifecycle hooks: `onEnter()`, `onExit()`; called by the activity when becoming active/inactive.
+- Update chat context: `updateChatCtx(chatCtx)` preserves the tool context and updates the active activity if present.
+
+#### Default node wrappers
+
+- `default.sttNode(agent, audio, modelSettings)`
+  - Requires an `STT` node; throws if missing.
+  - If non-streaming, wraps with `STTStreamAdapter` (requires `agent.vad`).
+  - Returns a `ReadableStream` that yields `SpeechEvent | string` from the underlying stream.
+
+- `default.llmNode(agent, chatCtx, toolCtx, modelSettings)`
+  - Requires an `LLM` node (non-realtime); throws if missing or if a `RealtimeModel` is provided.
+  - Calls `llm.chat({ chatCtx, toolCtx, toolChoice, parallelToolCalls: true })` and exposes a `ReadableStream` of `ChatChunk | string`.
+
+- `default.ttsNode(agent, text, modelSettings)`
+  - Requires a `TTS` node; if non-streaming, wraps with `TTSStreamAdapter` + `BasicSentenceTokenizer`.
+  - Returns a `ReadableStream<AudioFrame>` that yields audio frames.
+
+- `default.transcriptionNode` / `default.realtimeAudioOutputNode`
+  - Pass-through defaults returning the input stream.
+
+#### Typical usage
+
+```ts
+const session = new voice.AgentSession({ vad, stt, llm, tts });
+await session.start({ agent: new voice.Agent({ instructions: '...' }), room });
+session.say('Hello!');
+```
+
+#### Tool calling context
+
+- `asyncLocalStorage` carries an optional `functionCall` context for nested tool execution. Use `isStopResponse`/`StopResponse` to abort generation early from within tools.
+
+#### Known shortcomings and probable bugs
+
+- Tools shallow copy
+  - In constructor, `this._tools = { ...tools }` performs a shallow copy; nested objects inside `tools` are shared/referenced. Consider deep cloning if mutation isolation is important.
+
+- Missing streaming path for RealtimeModel
+  - `default.llmNode` rejects `RealtimeModel` (by design) but there’s no equivalent helper for realtime multimodal nodes here; ensure `AgentActivity` or session provides the correct path.
+
+- Error message mentions AgentTask/VoiceAgent
+  - In `default.sttNode`, the error refers to "AgentTask/VoiceAgent" which may be legacy naming. Consider aligning wording with current `Agent`/`AgentSession` terms.
+
+- Tokenizer default may not match TTS models
+  - `TTSStreamAdapter` uses `BasicSentenceTokenizer`; for some languages/models better segmentation may be needed. Consider making tokenizer configurable.
 
 
 
