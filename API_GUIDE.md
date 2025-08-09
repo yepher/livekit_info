@@ -160,6 +160,57 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
       - [Typical usage](#typical-usage)
       - [Tool calling context](#tool-calling-context)
       - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
+    - [Voice IO architecture and usage](#voice-io-architecture-and-usage)
+      - [Purpose](#purpose)
+      - [High-level architecture](#high-level-architecture)
+      - [Node function types](#node-function-types)
+      - [AudioInput](#audioinput)
+      - [AudioOutput](#audiooutput)
+      - [TextOutput](#textoutput)
+      - [AgentInput/AgentOutput controllers](#agentinputagentoutput-controllers)
+      - [Typical usage](#typical-usage)
+      - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
+    - [RoomIO architecture and usage](#roomio-architecture-and-usage)
+      - [Purpose](#purpose)
+      - [High-level architecture](#high-level-architecture)
+      - [Options](#options)
+      - [Lifecycle](#lifecycle)
+      - [Text input handling](#text-input-handling)
+      - [Transcript forwarding](#transcript-forwarding)
+      - [Participant selection](#participant-selection)
+      - [API](#api)
+      - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
+    - [Room IO streams: _input.ts and _output.ts](#room-io-streams-_inputts-and-_outputts)
+      - [Purpose](#purpose)
+      - [Architecture](#architecture)
+    - [_input.ts: ParticipantAudioInputStream](#_inputts-participantaudioinputstream)
+    - [_output.ts: Transcription outputs](#_outputts-transcription-outputs)
+    - [_output.ts: ParticipantAudioOutput](#_outputts-participantaudiooutput)
+      - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
+    - [TranscriptionSynchronizer architecture and usage](#transcriptionsynchronizer-architecture-and-usage)
+      - [Purpose](#purpose)
+      - [High-level architecture](#high-level-architecture)
+      - [Text pacing model](#text-pacing-model)
+      - [API](#api)
+      - [SegmentSynchronizerImpl core](#segmentsynchronizerimpl-core)
+      - [Typical flow](#typical-flow)
+      - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
+      - [Tuning](#tuning)
+    - [SpeechHandle architecture and usage](#speechhandle-architecture-and-usage)
+      - [Purpose](#purpose)
+      - [API](#api)
+      - [Typical usage](#typical-usage)
+      - [Interaction with AgentActivity and IO](#interaction-with-agentactivity-and-io)
+      - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
+    - [AgentActivity architecture and usage](#agentactivity-architecture-and-usage)
+      - [Purpose](#purpose)
+      - [High-level architecture](#high-level-architecture)
+      - [Lifecycle](#lifecycle)
+      - [Speech queue and interruptions](#speech-queue-and-interruptions)
+      - [Recognition integration](#recognition-integration)
+      - [Generation paths](#generation-paths)
+      - [Typical flow](#typical-flow)
+      - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
 - [Common Terms](#common-terms)
   - [Helpful Overviews](#helpful-overviews)
   - [TODO](#todo)
@@ -1873,6 +1924,593 @@ session.say('Hello!');
 
 - Tokenizer default may not match TTS models
   - `TTSStreamAdapter` uses `BasicSentenceTokenizer`; for some languages/models better segmentation may be needed. Consider making tokenizer configurable.
+
+
+
+
+
+### Voice IO architecture and usage
+
+This document covers `agents/src/voice/io.ts`, which defines the input/output abstraction for voice agents: audio input streams, audio output sinks, and text output sinks. It also declares node function types used by the pipeline (`STTNode`, `LLMNode`, `TTSNode`).
+
+#### Purpose
+
+- Provide pluggable I/O surfaces that AgentSession/AgentActivity can wire to LiveKit `Room` or other sources/sinks.
+- Track attachment/detachment state, enable/disable flags, and playback lifecycle for audio sinks.
+- Offer a uniform contract for LLM/STT/TTS node functions.
+
+#### High-level architecture
+
+```mermaid
+graph TD
+  subgraph Input
+    AIN["AudioInput"] -->|stream| RS["ReadableStream<AudioFrame>"]
+  end
+  subgraph Output
+    AOUT["AudioOutput"] --> NEXT["nextInChain (optional)"]
+    TOUT["TextOutput"] --> TNEXT["nextInChain (optional)"]
+  end
+  CTRL["AgentInput/AgentOutput"] --> AIN
+  CTRL --> AOUT
+  CTRL --> TOUT
+```
+
+#### Node function types
+
+- `STTNode(audio, modelSettings) => Promise<ReadableStream<SpeechEvent | string> | null>`
+- `LLMNode(chatCtx, toolCtx, modelSettings) => Promise<ReadableStream<ChatChunk | string> | null>`
+- `TTSNode(text, modelSettings) => Promise<ReadableStream<AudioFrame> | null>`
+
+#### AudioInput
+
+- Wraps a `DeferredReadableStream<AudioFrame>`.
+- Methods:
+  - `get stream()` – readable stream for audio.
+  - `onAttached()` / `onDetached()` – lifecycle hooks for enable/disable.
+
+#### AudioOutput
+
+- EventEmitter with playback lifecycle tracking and optional chaining to another `AudioOutput`.
+- Key fields:
+  - `sampleRate?: number` – optional sink rate.
+  - `nextInChain?: AudioOutput` – chained sink that receives `onAttached`/`onDetached` and playback events.
+- Playback lifecycle:
+  - `captureFrame(frame)` – called to push a frame; starts a new playback segment if not currently capturing.
+  - `flush()` – marks end of current segment (does not emit finished).
+  - `clearBuffer()` – abstract; immediate stop; implementers must call `onPlaybackFinished` accordingly.
+  - `onPlaybackFinished(event)` – marks a segment as finished, resolves waiters, and emits `playbackFinished`.
+  - `waitForPlayout()` – waits until all captured segments complete and returns the last `PlaybackFinishedEvent`.
+- Chain propagation:
+  - `onAttached()` / `onDetached()` forward to `nextInChain` if present.
+
+`PlaybackFinishedEvent`:
+- `playbackPosition: number`, `interrupted: boolean`, `synchronizedTranscript?: string`.
+
+#### TextOutput
+
+- Abstract sink for generated text.
+- Methods:
+  - `captureText(text)` – ingest a string chunk.
+  - `flush()` – mark current text segment as complete.
+  - `onAttached()` / `onDetached()` – propagate to `nextInChain`.
+
+#### AgentInput/AgentOutput controllers
+
+- `AgentInput`
+  - Tracks an `AudioInput | null` and an enable flag.
+  - `audioEnabled` getter/setter toggles attached/detached callbacks on the current `AudioInput`.
+  - Setting `audio` invokes the provided `audioChanged` callback (used by higher layers to rewire pipelines).
+
+- `AgentOutput`
+  - Tracks `AudioOutput | null` and `TextOutput | null`, with independent enable flags.
+  - Setting `audio` or `transcription` detaches the previous sink (if any), stores the new one, triggers the corresponding `...Changed` callback, and then calls `onAttached()` on the new sink.
+  - `setAudioEnabled` / `setTranscriptionEnabled` toggle attachment state on current sinks.
+
+#### Typical usage
+
+```ts
+// Configure session IO
+const input = new MyAudioInput();
+const audioSink = new MyAudioOutput(/* sampleRate */ 48000);
+const textSink = new MyTextOutput();
+
+session.input.audio = input;
+session.output.audio = audioSink;
+session.output.transcription = textSink;
+```
+
+#### Known shortcomings and probable bugs
+
+- Playback finished accounting
+  - `onPlaybackFinished` warns when called more times than segments, but does not protect against under-reporting (segments never finished). Consider timeouts or health counters.
+
+- Capture and flush semantics
+  - `flush()` resets `_capturing` but does not emit any event; if an implementer forgets to call `onPlaybackFinished`, `waitForPlayout()` can hang. Document and enforce via tests.
+
+- Chain error handling
+  - `onAttached`/`onDetached` propagate, but errors thrown by `nextInChain` are not caught. Consider try/catch to isolate chains.
+
+- AgentInput change handling
+  - `AgentInput.audio = stream` immediately calls `audioChanged()` but does not attach/detach the new stream. Attachment is controlled by `audioEnabled` and consumer logic; ensure callers call `onAttached()` for initial hookup if needed.
+
+- TextOutput completeness
+  - There is no built-in `waitForFlush()`; upstream must infer completion. Consider adding a future for text segment completion similar to audio.
+
+
+
+
+
+### RoomIO architecture and usage
+
+This document covers `agents/src/voice/room_io/room_io.ts`, which bridges a LiveKit `Room` to the voice agent’s input/output interfaces. It selects a participant, subscribes to audio, publishes agent audio, synchronizes transcripts, and handles text input streams.
+
+#### Purpose
+
+- Manage room-level I/O and bind them to `AgentSession.input`/`output`.
+- Select the active user participant (optionally by identity) and listen for joins/leaves.
+- Publish agent audio output and forward user/agent transcripts to room data/text streams.
+- Optionally synchronize transcript progression with audio playout.
+
+#### High-level architecture
+
+```mermaid
+graph TD
+  subgraph RoomIO
+    IN["ParticipantAudioInputStream"]
+    AO["ParticipantAudioOutput"]
+    TXU["User transcript output (legacy + modern)"]
+    TXA["Agent transcript output (legacy + modern)"]
+    Sync["TranscriptionSynchronizer (optional)"]
+  end
+  Room-->|subscribe audio| IN
+  AO-->|publish audio| Room
+  TXU-->|emit text| Room
+  TXA-->|emit text| Room
+  Sync-->AO
+  Sync-->TXA
+  Room<-->|text stream: TOPIC_CHAT| RoomIO
+  RoomIO-->AgentSession
+```
+
+#### Options
+
+- `RoomInputOptions`
+  - `audioSampleRate`, `audioNumChannels`, `textEnabled`, `audioEnabled`, `videoEnabled`
+  - `participantIdentity?`: focus on a specific user; otherwise auto-select the first acceptable participant.
+  - `noiseCancellation?`: enable on input.
+  - `textInputCallback?`: default interrupts and calls `generateReply` with `userInput`.
+  - `participantKinds?`: accepted kinds (default `SIP`, `STANDARD`).
+
+- `RoomOutputOptions`
+  - `transcriptionEnabled`, `audioEnabled`, `audioSampleRate`, `audioNumChannels`
+  - `syncTranscription`: if true, couples agent transcript timing with audio playout.
+  - `audioPublishOptions`: passed to `TrackPublishOptions` (defaults to microphone source).
+
+#### Lifecycle
+
+- `start()`
+  - Registers text stream handler for `TOPIC_CHAT` (if enabled).
+  - Creates `ParticipantAudioInputStream` and output sinks (`ParticipantAudioOutput`, transcript outputs) per options.
+  - Starts `TranscriptionSynchronizer` if enabled and audio output is present.
+  - Subscribes to room events: connection state, participant joined/left.
+  - Kicks off `initTask()`:
+    - Waits for room connection; seeds existing participants; waits for the selected participant; calls `setParticipant`.
+    - Updates agent transcript output to use the local participant identity; starts audio output.
+  - Attaches created I/O to `AgentSession.input/ output` and subscribes to `AgentSession` events for state and user transcription.
+
+#### Text input handling
+
+- Room text stream handler calls `onUserTextInput(reader, participantInfo)`:
+  - Validates target participant.
+  - Reads the entire text payload (`reader.readAll()`), then invokes `textInputCallback(sess, { text, info, participant })`.
+  - Default callback: `sess.interrupt()` then `sess.generateReply({ userInput: text })`.
+
+#### Transcript forwarding
+
+- `forwardUserTranscript()` consumes the session’s `UserInputTranscribed` stream and forwards chunks to `userTranscriptOutput`, awaiting `captureText` to avoid races; flushes on final events.
+
+#### Participant selection
+
+- If `participantIdentity` is set, waits for that identity.
+- Otherwise, ignores participants that are marked as publishing on behalf of the agent (`ATTRIBUTE_PUBLISH_ON_BEHALF`) and filters by `participantKinds`.
+
+#### API
+
+- `setParticipant(identity: string | null)` / `unsetParticipant()`
+  - Switch active user and retarget user transcript sinks.
+- Getters `audioOutput` / `transcriptionOutput`
+  - Return either the raw sink or the synchronized proxy depending on `syncTranscription`.
+
+#### Known shortcomings and probable bugs
+
+- Text handler unregister TODO
+  - A TODO notes the text stream handler is not unregistered on close. Without a `close()` method, this can leak handlers across restarts. Implement a `close()` to remove room listeners and unregister text handler.
+
+- Participant disconnect behavior
+  - On participant disconnected, it calls `unsetParticipant()` but does not attempt to reselect a new one. Depending on UX, a new participant might be auto-selected; clarify behavior behind AJS-177.
+
+- Transcript forwarder reader not released
+  - `forwardUserTranscript()` obtains a reader but never releases it. On shutdown, ensure it is cancelled/released.
+
+- Agent output selection TODO
+  - A TODO indicates falling back to agent’s audio output if RoomIO has none (AJS-176). Currently only uses `participantAudioOutput`.
+
+- Attribute keys hard-coded
+  - Uses `lk.agent.state` attribute; consider constants or namespacing strategy.
+
+
+
+
+
+### Room IO streams: _input.ts and _output.ts
+
+This document covers `agents/src/voice/room_io/_input.ts` and `_output.ts`, the low-level building blocks that connect LiveKit media/text streams to the agent I/O layer.
+
+#### Purpose
+
+- `_input.ts`: Subscribe to the active participant’s microphone, resample, and expose as a `ReadableStream<AudioFrame>` via `AudioInput`.
+- `_output.ts`: Publish agent audio frames to the room and publish transcripts to both legacy and modern text paths.
+
+#### Architecture
+
+```mermaid
+graph TD
+  subgraph Input
+    PAI["ParticipantAudioInputStream"] --> RS["DeferredReadableStream<AudioFrame>"]
+  end
+  subgraph Output
+    PAO["ParticipantAudioOutput"] --> Room
+    PTO["ParticipantTranscriptionOutput"] --> Room
+    PLTO["ParticipantLegacyTranscriptionOutput"] --> Room
+    PTX["ParalellTextOutput"] --> PTO & PLTO
+  end
+```
+
+### _input.ts: ParticipantAudioInputStream
+
+- Listens for `RoomEvent.TrackSubscribed`/`TrackUnpublished`.
+- Tracks target participant identity; when set, subscribes to the first microphone track and pipes audio into `deferredStream`.
+- Applies resampling via `resampleStream` to the requested `sampleRate`.
+
+Key methods:
+- `setParticipant(participant: RemoteParticipant | string | null)` – switches the active source; closes stream when unset.
+- Internals:
+  - `onTrackSubscribed(track, publication, participant)` – guards by identity and source; sets the stream source.
+  - `onTrackUnpublished(...)` – if the active publication is removed, falls back to the first available track.
+
+### _output.ts: Transcription outputs
+
+- Base class `BaseParticipantTranscriptionOutput` maintains state and picks a `trackId` (microphone) associated with a participant.
+- Two concrete outputs:
+  - `ParticipantTranscriptionOutput`: uses the room’s text stream (`streamText`) API.
+  - `ParticipantLegacyTranscriptionOutput`: publishes transcription via legacy `publishTranscription` API.
+- `ParalellTextOutput` fans out text to both sinks when both are enabled.
+
+Flow:
+```mermaid
+sequenceDiagram
+  participant App as "Agent/RoomIO"
+  participant PTX as "ParalellTextOutput"
+  participant PTO as "ParticipantTranscriptionOutput"
+  participant PLTO as "ParticipantLegacyTranscriptionOutput"
+  participant Room
+
+  App->>PTX: captureText(text)
+  PTX->>PTO: captureText(text)
+  PTX->>PLTO: captureText(text)
+  PTO->>Room: streamText(write/close)
+  PLTO->>Room: publishTranscription(segments)
+  App->>PTX: flush()
+  PTX->>PTO: flush()
+  PTX->>PLTO: flush()
+```
+
+Participant selection:
+- `setParticipant(participant)` updates the identity and tries to associate a track ID. On mic track publishes, handlers update `trackId` opportunistically.
+
+### _output.ts: ParticipantAudioOutput
+
+- Extends `AudioOutput` to publish frames via `AudioSource`/`LocalAudioTrack`.
+- Tracks pushed duration, queues, and interruption via futures.
+- `start()` publishes and waits for subscription to complete.
+- `captureFrame(frame)` pushes to `AudioSource` and increments duration.
+- `flush()` starts a task that waits for playout (or interruption), then emits `onPlaybackFinished`.
+- `clearBuffer()` resolves the interruption future, causing any pending playout wait to compute played duration net of queue and finish.
+
+#### Known shortcomings and probable bugs
+
+- Input: publication fallback ordering
+  - On `onTrackUnpublished`, it iterates `participant.trackPublications.values()` and picks the first track with `publication.track`. If there are multiple microphones, no prioritization is applied.
+
+- Input: event listener cleanup
+  - The class registers room event listeners in the constructor but does not remove them on shutdown. Provide a `close()` to remove listeners and detach the source.
+
+- Output: publish options ignored
+  - `ParticipantAudioOutput.publishTrack()` always wraps new `TrackPublishOptions({ source: SOURCE_MICROPHONE })` instead of using the provided `options.trackPublishOptions`. This ignores caller-specified options.
+
+- Output: duration units
+  - `pushedDurationMs` is computed as `samplesPerChannel / sampleRate` (seconds), but named ms. Rename to seconds or multiply by 1000 for milliseconds.
+
+- Output: text output sequencing
+  - `ParticipantTranscriptionOutput.captureText` gates on any pending `flushTask`. If capture bursts are large, this can serialize excessively. Consider buffering or backpressure.
+
+- Output: missing teardown
+  - Text outputs and audio output do not expose `close()`; they hold room listeners and writers that should be closed on shutdown.
+
+
+
+
+
+### TranscriptionSynchronizer architecture and usage
+
+This document describes `agents/src/voice/transcription/synchronizer.ts`, which aligns agent text output with audio playout. It segments text, throttles emission based on an estimated speech rate, and annotates playback-finished events with a synchronized transcript.
+
+#### Purpose
+
+- Pace the agent’s transcript to match actual audio timing.
+- Provide synchronized transcript text alongside audio `onPlaybackFinished` events.
+- Allow enabling/disabling on the fly and rotating segments cleanly.
+
+#### High-level architecture
+
+```mermaid
+graph TD
+  subgraph Synchronizer
+    Impl["SegmentSynchronizerImpl"]
+    SAO["SyncedAudioOutput"]
+    STO["SyncedTextOutput"]
+  end
+  AO["AudioOutput (next)"] --> SAO
+  TO["TextOutput (next)"] --> STO
+  STO --> Impl
+  SAO --> Impl
+  Impl -->|"forwarded text"| TO
+  SAO --> AO
+```
+
+#### Text pacing model
+
+- Uses a target rate derived from `speed * STANDARD_SPEECH_RATE` (hyphens per second).
+- Tokenizes sentences and words via `SentenceTokenizer` (defaults from `tokenize/basic`).
+- Hyphenates words to approximate syllables; delays are computed so the number of emitted hyphens follows elapsed time.
+
+#### API
+
+- Constructor: `new TranscriptionSynchronizer(nextAudio: AudioOutput, nextText: TextOutput, options?)`
+  - Wraps the provided outputs with `SyncedAudioOutput`/`SyncedTextOutput` and constructs an initial segment impl.
+- Properties:
+  - `audioOutput`, `textOutput`: the wrapped outputs to bind into RoomIO.
+  - `enabled`: getter/setter to toggle synchronization.
+- Methods:
+  - `rotateSegment()`: finishes the current segment and starts a new one.
+  - `barrier()`: await current rotation to complete.
+  - `close()`: stop rotation and close the current impl.
+
+#### SegmentSynchronizerImpl core
+
+- Maintains two inputs:
+  - Audio: accumulates `pushedDuration` seconds, marks `done` in `endAudioInput()`.
+  - Text: token stream; forwards chunks into an internal output stream with delays; marks `done` in `endTextInput()`.
+- When playback finishes (from audio `onPlaybackFinished`), if not interrupted, marks `playbackCompleted` and returns the full text as `synchronizedTranscript`; otherwise returns only forwarded text so far.
+- Exposes `readable` and captures forwarded text to the next sink, ending with an automatic `flush()`.
+
+#### Typical flow
+
+```mermaid
+sequenceDiagram
+  participant T as SyncedTextOutput
+  participant A as SyncedAudioOutput
+  participant Impl as SegmentSynchronizerImpl
+  participant OutT as Next TextOutput
+  participant OutA as Next AudioOutput
+
+  T->>Impl: pushText()
+  A->>Impl: pushAudio(frame)
+  T->>Impl: endTextInput()
+  A->>Impl: endAudioInput()
+  A->>OutA: onPlaybackFinished(ev)
+  A->>Impl: markPlaybackFinished(ev.playbackPosition, ev.interrupted)
+  A->>OutT: onPlaybackFinished({ synchronizedTranscript })
+```
+
+#### Known shortcomings and probable bugs
+
+- Seconds vs milliseconds
+  - Durations are computed as `samplesPerChannel / sampleRate` (seconds) but named as ms in some places. Align naming/units or multiply by 1000 when labeling as ms.
+
+- Start time dependency
+  - `startWallTime` is set on the first audio frame with `frameDuration > 0`. If text arrives early or audio is silent initially, pacing begins late. Consider starting on first text or a small bias.
+
+- Rotation during capture
+  - `SyncedTextOutput.captureText`/`SyncedAudioOutput.captureFrame` call `barrier()` then push. If `_impl.textInputEnded`/`audioInputEnded` is true, they rotate the segment and push after barrier. Rapid alternation could cause extra rotations.
+
+- Reader closure order
+  - `captureTaskImpl` reads from `outputStream` and then flushes `nextInChain`. Ensure `nextInChain.flush()` is safe when the downstream sink is changing participants or being replaced.
+
+- Long sentences
+  - The pacing splits by words and hyphens. Very long tokens without hyphens may emit with minimal delay. Consider capping per-token delay.
+
+#### Tuning
+
+- `options.speed` scales pacing; set >1 for faster text, <1 for slower.
+- Swap tokenizer/hyphenator for language-specific behavior.
+
+
+
+
+
+### SpeechHandle architecture and usage
+
+This document describes `agents/src/voice/speech_handle.ts`, a small control object representing a queued TTS playback segment. It exposes interruption, authorization, and playout completion signals and carries an associated chat message.
+
+#### Purpose
+
+- Represent one unit of speech output, carrying metadata such as priority and parent linkage.
+- Allow callers to interrupt (if permitted), await authorization, and await playout completion.
+- Provide a future-like interface (`then`, `waitForPlayout`) to chain logic after playback.
+
+#### API
+
+- Static priorities:
+  - `SPEECH_PRIORITY_LOW = 0`, `SPEECH_PRIORITY_NORMAL = 5`, `SPEECH_PRIORITY_HIGH = 10`.
+
+- Creation:
+  - `SpeechHandle.create({ allowInterruptions?, stepIndex?, parent? })` → new handle with unique id.
+
+- Properties and getters:
+  - `id: string`, `allowInterruptions: boolean`, `stepIndex: number`, `parent?: SpeechHandle`.
+  - `interrupted: boolean` – set once `interrupt()` is called.
+  - `done: boolean` – set once playout completes.
+  - `chatMessage?: ChatMessage` – associated message when known.
+
+- Control methods:
+  - `interrupt()` – resolves the internal interrupt future; throws if interruptions are not allowed or if already done.
+  - `then(cb)` – run `cb(handle)` after playout done.
+  - `waitForPlayout()` – await playout completion.
+  - `waitIfNotInterrupted(promises: Promise[])` – races the provided promises against the interrupt future; returns once either bucket resolves.
+
+- Internal (used by queue/execution engine):
+  - `_setChatMessage(msg)`, `_authorizePlayout()`, `_waitForAuthorization()`, `_markPlayoutDone()`.
+
+#### Typical usage
+
+```ts
+const handle = SpeechHandle.create({ allowInterruptions: true });
+
+// Queue speech and await completion later
+handle.then(() => console.log('speech done'));
+
+// Interrupt if a VAD event indicates the user spoke
+handle.interrupt();
+```
+
+#### Interaction with AgentActivity and IO
+
+- When TTS starts/queues, a `SpeechHandle` is created and returned to the caller (e.g., `AgentSession.say()` or `generateReply()`).
+- The IO layer (`AudioOutput`) reports playback finished events, which eventually call `_markPlayoutDone()`.
+- VAD events can call `handle.interrupt()` to stop playback early (if `allowInterruptions`).
+
+#### Known shortcomings and probable bugs
+
+- Interrupt after done
+  - `interrupt()` returns early if `done` is true; callers may assume an error is thrown. This is a design choice but document clearly.
+
+- Authorization is never rejected
+  - `_waitForAuthorization()` awaits a future that is resolved via `_authorizePlayout()` but never rejected; queues must enforce cancellation semantics separately.
+
+- No timeout helpers
+  - No built-in timeout for authorization or playout; upstream must handle timeouts.
+
+- Parent linkage is not used here
+  - `parent` is stored but not leveraged in this module; ensure upstream semantics (e.g., batching or hierarchical cancellation) are implemented if needed.
+
+
+
+
+
+### AgentActivity architecture and usage
+
+This document explains `agents/src/voice/agent_activity.ts`, the core runtime that orchestrates recognition (VAD/STT), generation (LLM/RealtimeModel + TTS), speech queueing/interruptions, and tool execution for a single active agent in an `AgentSession`.
+
+#### Purpose
+
+- Wire up recognition (AudioRecognition) and the generation pipeline for the current agent.
+- Manage a priority speech queue with interruption and authorization semantics.
+- Bridge RealtimeModel sessions (server-side events, user transcription, tool streams).
+- Emit `AgentSession` events for state, metrics, errors, user transcripts, speech creation, and tool execution.
+
+#### High-level architecture
+
+```mermaid
+graph TD
+  subgraph Activity
+    Q["Speech queue (Heap)"]
+    AR["AudioRecognition"]
+    RT["RealtimeSession (optional)"]
+    GEN["Generation pipeline (LLM/TTS/tools)"]
+  end
+  IN["audio input"] --> AR
+  AR -->|hooks| Activity
+  Activity -->|state/metrics/events| Sess["AgentSession"]
+  Q --> GEN
+  GEN --> IO["AgentSession.output"]
+  GEN --> Sess
+```
+
+#### Lifecycle
+
+- `start()`
+  - Binds the agent, configures RealtimeModel or LLM instructions/chat/tools, subscribes to metrics.
+  - Starts `AudioRecognition` with configured turn detection mode and delays.
+  - Spawns `mainTask()` (speech queue runner) and calls agent `onEnter()` in a tracked task.
+
+- `drain()` and `close()`
+  - `drain()` waits for queue to empty (speech tasks may continue to run). `close()` detaches audio, closes recognition and realtime session, and unsubscribes listeners.
+
+#### Speech queue and interruptions
+
+- A max-heap of `[priority, timestamp, SpeechHandle]` ensures higher priority first, then FIFO within same priority.
+- `scheduleSpeech(handle, priority, bypassDraining=false)` enqueues and wakes `mainTask()`.
+- `mainTask()` authorizes the front speech (`_authorizePlayout()`), waits for its `waitForPlayout()`, then proceeds.
+- `interrupt()` interrupts current speech and all queued speeches, and calls `realtimeSession.interrupt()`.
+
+#### Recognition integration
+
+- Hooks update user state on VAD start/end, emit interim/final transcripts, and trigger interruption on VAD inference when thresholds are met.
+- End-of-turn (`onEndOfTurn`) coordinates with RealtimeModel vs LLM pipelines, optionally interrupts current speech, runs `onUserTurnCompleted`, then calls `generateReply` with the resulting user message.
+
+#### Generation paths
+
+- Non-realtime (LLM): `pipelineReplyTask`
+  - Drives `performLLMInference`, `performTTSInference`, `performTextForwarding`, `performAudioForwarding`, and `performToolExecutions`.
+  - Waits for authorization, updates session state on first frame/text, and adds assistant messages (interrupted or final) to chat context.
+
+- Realtime: `realtimeReplyTask` / `realtimeGenerationTask`
+  - Uses `RealtimeSession` to push user input, get streamed message/audio/tool events, forward to IO, and handle truncation on interruption.
+
+#### Typical flow
+
+```mermaid
+sequenceDiagram
+  participant Act as AgentActivity
+  participant Rec as AudioRecognition
+  participant Q as SpeechQueue
+  participant L as LLM/Realtime
+  participant TTS
+  participant IO as AgentSession.output
+
+  Rec-->>Act: onEndOfTurn(info)
+  Act->>Act: userTurnCompleted(info)
+  Act->>Act: generateReply(...)
+  Act->>Q: scheduleSpeech(handle)
+  Q->>Act: authorize(handle)
+  Act->>L: start generation
+  L-->>Act: stream text/tool calls
+  Act->>TTS: stream synth (optional)
+  TTS-->>IO: audio frames
+  IO-->>Act: onPlaybackFinished
+  Act->>Q: next
+```
+
+#### Known shortcomings and probable bugs
+
+- Turn detection mode warnings
+  - Several branches coerce/override `turnDetectionMode` based on capabilities. This is good UX but can mask misconfiguration; consider surfacing as configuration errors instead of silent fallback.
+
+- Authorization vs task start
+  - Tasks for say/pipeline/realtime begin setup before authorization; heavy upstream work may occur before playback is allowed. Consider deferring heavy steps until authorized to reduce wasted work on interrupts.
+
+- Queue wakeups
+  - `wakeupMainTask()` is called from many places; ensure it is invoked after all state affecting queue selection is updated to avoid spurious loops.
+
+- Realtime truncation timing
+  - On interruption, truncation uses `playbackPosition` potentially from seconds vs ms mismatch if upstream uses different units; verify consistency.
+
+- State transitions
+  - Transitions between `thinking`/`speaking`/`listening` rely on first-frame/text futures and task completions; edge races can leave session in the wrong state if sinks change mid-stream.
+
+- Tool step cap
+  - `maxToolSteps` enforcement is correct, but repeated tool executions within one step aren’t capped here; ensure `performToolExecutions` bound checks align.
 
 
 
