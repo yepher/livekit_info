@@ -51,6 +51,33 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
       - [Typical usage](#typical-usage)
       - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
       - [Tuning notes](#tuning-notes)
+    - [SupervisedProc architecture and usage](#supervisedproc-architecture-and-usage)
+      - [Purpose](#purpose)
+      - [High-level structure](#high-level-structure)
+      - [Lifecycle overview](#lifecycle-overview)
+      - [IPC messages](#ipc-messages)
+      - [Sequence: start, handshake, run, shutdown](#sequence-start-handshake-run-shutdown)
+      - [Typical subclassing](#typical-subclassing)
+      - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
+      - [Tuning recommendations](#tuning-recommendations)
+    - [JobProcExecutor architecture and usage](#jobprocexecutor-architecture-and-usage)
+      - [Purpose](#purpose)
+      - [High-level architecture](#high-level-architecture)
+      - [Key fields and behavior](#key-fields-and-behavior)
+      - [Job launch and inference flow](#job-launch-and-inference-flow)
+      - [Integration points](#integration-points)
+      - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
+      - [Practical tips](#practical-tips)
+    - [Job APIs: JobContext, JobRequest, and JobProcess](#job-apis-jobcontext-jobrequest-and-jobprocess)
+      - [Key types](#key-types)
+      - [High-level usage](#high-level-usage)
+      - [Job acceptance flow](#job-acceptance-flow)
+      - [JobContext lifecycle](#jobcontext-lifecycle)
+      - [JobContext API](#jobcontext-api)
+      - [Participant entrypoints](#participant-entrypoints)
+      - [CurrentJobContext](#currentjobcontext)
+      - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
+      - [Tips for agent authors](#tips-for-agent-authors)
 - [Common Terms](#common-terms)
   - [Helpful Overviews](#helpful-overviews)
   - [TODO](#todo)
@@ -455,6 +482,357 @@ sequenceDiagram
 - `numIdleProcesses`: trade-off between latency (higher is faster) and memory/CPU (higher is costlier).
 - `initializeProcessTimeout` and `closeTimeout`: keep realistic bounds for environment and agent init time.
 - Memory guardrails come from `WorkerOptions` and are passed to executors; adjust per agent complexity.
+
+
+
+
+
+### SupervisedProc architecture and usage
+
+This document describes `agents/src/ipc/supervised_proc.ts` — the base class that supervises child processes used by executors (e.g., job and inference). It manages spawning, an initialization handshake, health pings, timeouts, and shutdown.
+
+#### Purpose
+
+Provide a common lifecycle for child processes:
+- Spawn and initialize a child process with consistent logger and ping configuration.
+- Liveness checks via ping/pong and a high-latency warning threshold.
+- Memory usage monitoring and enforcement (warn/kill thresholds).
+- Graceful shutdown with a timeout and forced kill fallback.
+
+#### High-level structure
+
+```mermaid
+graph TD
+  P["Parent process"] -->|"createProcess()"| C("Child process")
+  P -->|"initializeRequest"| C
+  C -->|"initializeResponse"| P
+  P -->|"pingRequest (periodic)"| C
+  C -->|"pongResponse"| P
+  P -->|"startJobRequest / inferenceRequest"| C
+  C -->|"done / exiting / inferenceResponse"| P
+  P -->|"shutdownRequest"| C
+```
+
+#### Lifecycle overview
+
+- `start()`
+  - Validates state, calls `createProcess()` (implemented by subclasses), marks started, and kicks off `run()`.
+
+- `initialize()`
+  - Sends `initializeRequest` with `loggerOptions`, ping intervals/timeouts, and awaits the first message which must be `initializeResponse`. A timer enforces `initializeTimeout`.
+
+- `run()`
+  - Awaits `init.await` (resolved by `initialize()`).
+  - Starts periodic `pingRequest` at `pingInterval` and a `pongTimeout` that kills the child if no timely pong is received.
+  - Starts memory monitoring, warning or closing when thresholds are exceeded.
+  - Registers message handlers:
+    - `pongResponse`: computes latency, warns if above `highPingThreshold`, refreshes the `pongTimeout`.
+    - `exiting`: logs reason.
+    - `done`: marks closing, removes message listener.
+  - Registers process error and exit handlers to unblock `join()`.
+  - Calls subclass `mainTask(proc)` to wire child-specific message handling.
+
+- `launchJob(info)`
+  - Ensures no job is running, stores `runningJob`, and sends `startJobRequest`.
+
+- `close()`
+  - Sends `shutdownRequest` and waits up to `closeTimeout`; kills process if it does not exit in time; clears timers.
+
+#### IPC messages
+
+Defined in `agents/src/ipc/message.ts`:
+- Initialization: `initializeRequest`, `initializeResponse`
+- Health: `pingRequest`, `pongResponse`
+- Control: `startJobRequest`, `shutdownRequest`, `exiting`, `done`
+- Inference: `inferenceRequest`, `inferenceResponse`
+
+#### Sequence: start, handshake, run, shutdown
+
+```mermaid
+sequenceDiagram
+  participant Parent as "SupervisedProc (parent)"
+  participant Child as "Child process"
+
+  Parent->>Child: "spawn (createProcess)"
+  Parent->>Child: "initializeRequest(loggerOptions, ping...)"
+  Child-->>Parent: "initializeResponse"
+  Note over Parent,Child: "Parent starts ping loop and memory monitor"
+  loop "pingInterval"
+    Parent->>Child: "pingRequest(timestamp)"
+    Child-->>Parent: "pongResponse(timestamp)"
+  end
+  Parent->>Child: "startJobRequest(runningJob)"
+  Child-->>Parent: "done (on job completion)"
+  Parent->>Child: "shutdownRequest(reason?)"
+  Child-->>Parent: "exit"
+```
+
+#### Typical subclassing
+
+Subclasses implement:
+- `createProcess()`: how to fork/spawn the child (e.g., `child_process.fork`).
+- `mainTask(proc)`: any executor-specific message routing (e.g., inference request multiplexing).
+
+Examples:
+- `ipc/job_proc_executor.ts`
+- `ipc/inference_proc_executor.ts`
+
+#### Known shortcomings and probable bugs
+
+- Memory monitoring uses parent memory, not child
+  - `process.memoryUsage()` measures the supervising parent’s heap, not the child’s. This defeats enforcement for the child process. Consider either requesting memory stats from the child or sampling the child PID via OS APIs.
+
+- Memory watch interval missing delay
+  - `setInterval` for memory monitoring is called without a delay, causing a tight loop that can peg CPU. Provide a reasonable interval (e.g., 1000 ms).
+
+- Timers not consistently cleared
+  - In the normal `done`/`exit` path, `pingInterval`, `pongTimeout`, and the memory watch interval may remain until `close()` or error handling clears them. Ensure all timers are cleared as soon as the child is finished to avoid leaks.
+
+- Initialization timeout handling
+  - The `initialize()` timeout throws from the timer callback and calls `init.reject()`. Since `run()` awaits `init.await` in a fire-and-forget task, this can surface as an unhandled rejection. Prefer explicit cancellation and consistent cleanup.
+
+- `#logger` child context stability
+  - The logger is created with `{ runningJob: this.#runningJob }` at construction time. Before any job is launched this is undefined, and it does not update when `runningJob` changes. Consider deriving child logger fields at log time or recreating the child logger when a job starts.
+
+#### Tuning recommendations
+
+- Choose `pingInterval`, `pingTimeout`, and `highPingThreshold` appropriate to your agent’s workload and platform jitter.
+- Set realistic `initializeTimeout` and `closeTimeout` bounds for your environment.
+- Implement child-side graceful handling of `shutdownRequest` and timely `pongResponse` to avoid forced kills.
+
+
+
+
+
+### JobProcExecutor architecture and usage
+
+This document explains `agents/src/ipc/job_proc_executor.ts` — the supervised child-process executor that runs a single agent job and multiplexes inference requests between the job process and the global inference executor.
+
+#### Purpose
+
+- Spawn the job child process (`job_proc_lazy_main.js`) for a given agent module path.
+- Perform the common supervised lifecycle (via `SupervisedProc`): initialization, ping/pong, timeouts, shutdown.
+- Launch exactly one `RunningJobInfo` into the child.
+- Bridge inference requests from the job child to the global `InferenceExecutor` and return responses.
+
+#### High-level architecture
+
+```mermaid
+graph TD
+  P["Parent process"] -->|"fork agent child"| C("Job child process")
+  P -->|"initializeRequest/Response, ping/pong"| C
+  P -->|"startJobRequest(runningJob)"| C
+  C -->|"inferenceRequest(method, requestId, data)"| P
+  P -->|"doInference(...) via InferenceExecutor"| G["Inference process"]
+  P -->|"inferenceResponse(requestId, data|error)"| C
+  C -->|"done/exiting/exit"| P
+```
+
+#### Key fields and behavior
+
+- `createProcess()`
+  - `fork(new URL('./job_proc_lazy_main.js', import.meta.url), [agent])` — the child receives the agent module path as argv[2].
+
+- `mainTask(proc)`
+  - Listens for `inferenceRequest` from the child and delegates to `#doInferenceTask`.
+  - Tracks each inference task in `#inferenceTasks` (not awaited on close).
+
+- `launchJob(info: RunningJobInfo)`
+  - Requires `init.done === true` (initialized) and no currently running job.
+  - Sets `#jobStatus = JobStatus.RUNNING` and `#runningJob = info`, then sends `startJobRequest`.
+
+- `status`, `runningJob`
+  - `status` throws if not set; becomes `RUNNING` on launch. Not updated automatically to a terminal state in current code.
+
+#### Job launch and inference flow
+
+```mermaid
+sequenceDiagram
+  participant Parent as "JobProcExecutor"
+  participant Child as "Job child"
+  participant Infer as "InferenceExecutor"
+
+  Parent->>Child: "initializeRequest"
+  Child-->>Parent: "initializeResponse"
+  Parent->>Child: "startJobRequest(runningJob)"
+  Note over Parent,Child: "Job runs agent entrypoint"
+
+  Child->>Parent: "inferenceRequest(method, requestId, data)"
+  Parent->>Infer: "doInference(method, data)"
+  Infer-->>Parent: "data (or error)"
+  Parent-->>Child: "inferenceResponse(requestId, data|error)"
+
+  Child-->>Parent: "done / exiting"
+  Parent-->>Child: "shutdownRequest (from pool/worker)"
+  Child-->>Parent: "exit"
+```
+
+#### Integration points
+
+- Constructed and managed by `ProcPool`:
+  - In pooled mode: pre-warmed, then assigned a job when available.
+  - In non-pooled mode: created per job and initialized before launch.
+- Inference is delegated to `InferenceExecutor` (often an `InferenceProcExecutor`).
+
+#### Known shortcomings and probable bugs
+
+- Status never transitions out of RUNNING
+  - `#jobStatus` is set to `RUNNING` on `launchJob`, but there is no state update on `done`/`exit`. Consider updating status when receiving `done` or on process exit.
+
+- Unbounded `#inferenceTasks` growth
+  - Pushed to on every request and never pruned. While the process exits on close, references remain in the parent until GC. Consider removing settled promises or awaiting all in `close()`.
+
+- Error serialization across IPC
+  - `inferenceResponse.value.error` is typed as `Error`, but native IPC serialization loses prototype/stack. Normalize to a plain object ({ name, message, stack }) on send and reconstruct if needed on receive.
+
+- Missing propagation of `userArguments`
+  - The `userArguments` property is available but never sent to the child. If intended, include it in `startJobRequest` or a separate message.
+
+- Logger context
+  - Logger is created without dynamic job context. Consider adding job identifiers to the child logger fields when a job launches.
+
+#### Practical tips
+
+- Ensure `initialize()` completes before `launchJob()`.
+- If you customize inference, validate method names and payload schemas on both sides (child and parent).
+- On shutdown, prefer graceful `shutdownRequest` handling in the child so the parent doesn't have to kill.
+
+
+
+
+
+### Job APIs: JobContext, JobRequest, and JobProcess
+
+This document explains `agents/src/job.ts` — the public runtime surface available to agent code when a job is launched, along with how jobs are accepted and initialized.
+
+#### Key types
+
+- `JobContext`
+  - The main interface exposed to an agent entrypoint. Provides access to the LiveKit room, the agent participant, inference executor, and participant-driven hooks.
+- `JobRequest`
+  - The request object handed to `WorkerOptions.requestFunc`. Decide whether to accept or reject a job and optionally set participant identity/name/metadata.
+- `JobProcess`
+  - Minimal process metadata and `userData` storage for the process running the job.
+- `AutoSubscribe`
+  - Controls which remote tracks are auto-subscribed on connect: `SUBSCRIBE_ALL`, `SUBSCRIBE_NONE`, `VIDEO_ONLY`, `AUDIO_ONLY`.
+- `CurrentJobContext`
+  - Static accessor to the currently running `JobContext` inside the job process.
+
+#### High-level usage
+
+```ts
+// Agent entrypoint (default export) gets a JobContext
+export default async function run(job: JobContext) {
+  await job.connect();
+  const participant = await job.waitForParticipant();
+  job.addShutdownCallback(async () => {
+    // cleanup resources
+  });
+}
+```
+
+#### Job acceptance flow
+
+`JobRequest` is constructed by the worker on availability checks and passed to your `requestFunc`:
+
+```ts
+async function requestFunc(req: JobRequest) {
+  // Inspect room or publisher
+  if (req.room?.name && shouldAccept(req)) {
+    await req.accept('My Agent', '', JSON.stringify({ foo: 'bar' }));
+  } else {
+    await req.reject();
+  }
+}
+```
+
+Notes:
+- `accept(name, identity, metadata, attributes)` allows customizing the agent participant identity/name and metadata.
+- If `identity` is empty, it defaults to `agent-<job.id>`.
+
+#### JobContext lifecycle
+
+```mermaid
+sequenceDiagram
+  participant Exec as "JobProcExecutor"
+  participant Agent as "Agent code"
+  participant Room as "LiveKit Room"
+
+  Exec->>Agent: "create JobContext"
+  Agent->>Room: "connect(url, token, opts)"
+  Room-->>Agent: "connected"
+  Note over Agent,Room: "on connect, participant hooks are registered"
+  Agent->>Agent: "addParticipantEntrypoint(callback)"
+  Room-->>Agent: "participant connected -> invoke callback(job, participant)"
+  Agent->>Exec: "shutdown(reason?)"
+```
+
+#### JobContext API
+
+- `get job(): proto.Job`
+  - The job protobuf from the control plane.
+- `get room(): Room`
+  - The `@livekit/rtc-node` room instance used by the agent.
+- `get agent(): LocalParticipant | undefined`
+  - The agent participant after `connect()`.
+- `get inferenceExecutor()`
+  - A global `InferenceExecutor` for cross-job inference calls.
+- `connect(e2ee?, autoSubscribe?, rtcConfig?)`
+  - Establishes RTC connection using the job’s URL and token.
+  - `autoSubscribe` defaults to `SUBSCRIBE_ALL`. For `AUDIO_ONLY` or `VIDEO_ONLY`, it subscribes only matching tracks for already-present participants.
+- `waitForParticipant(identity?)`
+  - Resolves when a non-agent participant is present (immediately if already present, otherwise waits for `ParticipantConnected`). Rejects if the room disconnects first.
+- `addParticipantEntrypoint(callback)`
+  - Registers a callback to run on every new non-agent participant. Throws if the same callback is added twice.
+- `addShutdownCallback(callback)`
+  - Adds a promise to be awaited during job shutdown.
+- `shutdown(reason = '')`
+  - Signals the job to shut down; triggers executor-level shutdown.
+
+#### Participant entrypoints
+
+```mermaid
+sequenceDiagram
+  participant Job as "JobContext"
+  participant Room as "Room"
+  participant P as "RemoteParticipant"
+
+  Room-->>Job: "ParticipantConnected(P)"
+  Job->>Job: "for each registered callback(job, P)"
+  Job-->>Job: "store promise in participantTasks[P.identity]"
+  Note over Job: "on completion, delete participantTasks[P.identity]"
+```
+
+Behavior:
+- If a new participant with the same identity arrives before a prior task for that identity finishes, a warning is logged and the new task is still scheduled.
+
+#### CurrentJobContext
+
+Provides `CurrentJobContext.getCurrent()` for code paths that don’t receive `JobContext` explicitly. Set by the executor when the job starts.
+
+#### Known shortcomings and probable bugs
+
+- Event listener cleanup
+  - `JobContext` subscribes to `RoomEvent.ParticipantConnected` in the constructor and never removes this handler on shutdown. Consider removing listeners during shutdown to avoid leaks if the room persists longer than the job function.
+
+- Typo in warning message
+  - In `onParticipantConnected`, the warning string includes a typo: "prticipant".
+
+- Participant task mapping assumptions
+  - `participantTasks` is keyed by `participant.identity`. If identity changes or is undefined at some point, tasks could be mis-associated. The code assumes `identity` is defined (`p.identity!`).
+
+- Auto-subscribe partial behavior
+  - For `AUDIO_ONLY`/`VIDEO_ONLY`, it sets `subscribed` true for matching existing publications, but it does not explicitly unsubscribe others. If non-matching tracks were already auto-subscribed by the SDK, additional unsubscribes might be required.
+
+- Global context
+  - `CurrentJobContext` is a static global. In the presence of multiple concurrent jobs in the same process (not typical with the current architecture), this would be unsafe.
+
+#### Tips for agent authors
+
+- Call `connect()` early to avoid user-perceived delays.
+- Use `waitForParticipant(identity)` to await a specific user before starting heavy logic.
+- Use `addShutdownCallback` to release resources (files, network connections, timers).
+- Use `inferenceExecutor` for model calls; it is shared across jobs and offloads work to the inference subprocess.
 
 
 
