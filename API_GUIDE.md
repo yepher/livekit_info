@@ -107,6 +107,40 @@ See Also LiveKit [Architectural Overview](https://link.excalidraw.com/l/8IgSq6eb
       - [Inference bridge (InfClient)](#inference-bridge-infclient)
       - [Notable implementation details and issues](#notable-implementation-details-and-issues)
       - [Tips for agent authors](#tips-for-agent-authors)
+    - [Voice Activity Detection (VAD) architecture and usage](#voice-activity-detection-vad-architecture-and-usage)
+      - [Purpose](#purpose)
+      - [High-level architecture](#high-level-architecture)
+      - [Core types](#core-types)
+      - [VADStream API](#vadstream-api)
+      - [Voice pipeline with VAD](#voice-pipeline-with-vad)
+      - [Example usage](#example-usage)
+      - [Metrics collection](#metrics-collection)
+      - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
+      - [Where to find concrete VADs](#where-to-find-concrete-vads)
+    - [Silero VAD plugin](#silero-vad-plugin)
+      - [Purpose](#purpose)
+      - [Options and defaults](#options-and-defaults)
+      - [Loading and prewarming](#loading-and-prewarming)
+      - [Streaming flow](#streaming-flow)
+      - [Resampling and buffering](#resampling-and-buffering)
+      - [Event semantics](#event-semantics)
+      - [Updating options at runtime](#updating-options-at-runtime)
+      - [Performance and backpressure](#performance-and-backpressure)
+      - [Integration with core VAD](#integration-with-core-vad)
+      - [Known notes and issues](#known-notes-and-issues)
+      - [Minimal example](#minimal-example)
+    - [Voice AgentSession architecture and usage](#voice-agentsession-architecture-and-usage)
+      - [Purpose](#purpose)
+      - [High-level architecture](#high-level-architecture)
+      - [Construction and options](#construction-and-options)
+      - [Lifecycle](#lifecycle)
+      - [Core methods](#core-methods)
+      - [Events](#events)
+      - [Turn detection modes](#turn-detection-modes)
+      - [Typical flow](#typical-flow)
+      - [State accessors](#state-accessors)
+      - [Known behaviors and notes](#known-behaviors-and-notes)
+      - [Known shortcomings and probable bugs](#known-shortcomings-and-probable-bugs)
 - [Common Terms](#common-terms)
   - [Helpful Overviews](#helpful-overviews)
   - [TODO](#todo)
@@ -1182,6 +1216,415 @@ Shutdown sequence details:
 - Always call `ctx.connect()` early in your entry function to avoid delayed joins.
 - Register `addShutdownCallback` for cleanup and ensure long-running tasks abort on shutdown signals.
 - Use `inferenceExecutor` from the `JobContext` for model calls; it transparently routes to the parent’s inference process.
+
+
+
+
+
+### Voice Activity Detection (VAD) architecture and usage
+
+This document explains `agents/src/vad.ts` — the abstract VAD interfaces used by the voice stack — and how VAD fits into the overall streaming, STT, turn detection, and interruption architecture.
+
+#### Purpose
+
+- Provide a common interface (`VAD`, `VADStream`) to plug in different VAD implementations (e.g., Silero in `plugins/silero`).
+- Consume audio frames as a stream and produce VAD events (`START_OF_SPEECH`, `INFERENCE_DONE`, `END_OF_SPEECH`, `METRICS_COLLECTED`).
+- Feed downstream logic for turn detection, TTS interruption, and STT segmentation.
+
+#### High-level architecture
+
+```mermaid
+graph TD
+  Room["LiveKit Room audio"] --> AR("AudioRecognition")
+  AR -->|"ReadableStream<AudioFrame>"| V["VADStream"]
+  V -->|"VADEvent"| AA("AgentActivity hooks")
+  AA -->|"start/end of speech"| TD["Turn detection"]
+  AA -->|"interruption"| TTS["TTS playback"]
+  AR --> STT["STT stream or adapter"]
+  V -. optional segmentation .-> STT
+```
+
+Where VAD is used:
+- `voice/AudioRecognition.createVadTask`: attaches `vad.stream()` to the agent's input audio and reacts to events for turn detection and speech state.
+- `voice/Agent.default.sttNode`: wraps non-streaming STT in a `STTStreamAdapter` that requires a VAD to segment audio into utterances.
+- Examples: `examples/src/realtime_turn_detector.ts` loads a Silero VAD in `prewarm` and passes it to `AgentSession`.
+
+#### Core types
+
+- `VADEventType`: `START_OF_SPEECH`, `INFERENCE_DONE`, `END_OF_SPEECH`, `METRICS_COLLECTED`.
+- `VADEvent`: event payload with timing, frames, probability, and raw accumulation thresholds.
+- `VADCapabilities`: currently exposes `updateInterval` for metrics reporting.
+- `VADCallbacks`: typed emitter for `metrics_collected` events.
+- `VAD` (abstract): `label` and `stream()` factory for a `VADStream`.
+- `VADStream` (abstract): an async iterator over `VADEvent` with input/output streams and helpers.
+
+#### VADStream API
+
+- `updateInputStream(audio: ReadableStream<AudioFrame>)`
+  - Set or swap the upstream audio source. Under the hood, audio is queued into an internal `DeferredReadableStream` and forwarded to the VAD pipeline.
+- `detachInputStream()`
+  - Detach the current audio source without closing the VAD pipeline.
+- `flush()`
+  - Pushes an internal sentinel to force processing of buffered audio.
+- `endInput()`
+  - Closes the input side to signal end of audio.
+- `close()`
+  - Releases writers/readers and closes the output; iteration ends.
+- Async iteration
+  - `for await (const ev of vad.stream()) { ... }`
+
+Implementation notes:
+- Internally uses `IdentityTransform` to model input and output pipes.
+- Splits the output into two readers via `tee()`: one for downstream consumption and one for metrics aggregation.
+- Maintains `#lastActivityTime` to compute idle time for metrics.
+
+#### Voice pipeline with VAD
+
+```mermaid
+sequenceDiagram
+  participant Room as "Room"
+  participant Rec as "AudioRecognition"
+  participant V as "VADStream"
+  participant Act as "AgentActivity"
+  participant TD as "Turn detection"
+  participant TTS as "TTS"
+
+  Room->>Rec: "audio frames"
+  Rec->>V: "updateInputStream(audio)"
+  loop stream
+    V-->>Rec: "VADEvent"
+    Rec->>Act: "onStartOfSpeech / onEndOfSpeech / onVADInferenceDone"
+    alt end of speech
+      Act->>TD: "trigger EOU check"
+    end
+    alt inference done and interruption allowed
+      Act->>TTS: "interrupt current speech"
+    end
+  end
+```
+
+#### Example usage
+
+```ts
+// Prewarm a model VAD and pass into session
+proc.userData.vad = await silero.VAD.load();
+
+const session = new voice.AgentSession({
+  vad: proc.userData.vad,
+  stt: new deepgram.STT(),
+  tts: new elevenlabs.TTS(),
+});
+
+// Internally, AudioRecognition wires VAD:
+const vadStream = vad.stream();
+vadStream.updateInputStream(audioStream);
+for await (const ev of vadStream) {
+  // handle events
+}
+```
+
+#### Metrics collection
+
+- `monitorMetrics()` consumes a split of the output event stream and emits `metrics_collected` periodically based on `updateInterval`.
+- Collected fields include timestamp, idle time since last activity, total inference duration, inference count, and VAD label.
+
+#### Known shortcomings and probable bugs
+
+- Inference duration never accumulates
+  - `inferenceDurationTotal` is initialized and reset but never incremented from events. It should sum `ev.inferenceDuration` on `INFERENCE_DONE`.
+
+- First idle time may be huge
+  - `#lastActivityTime` starts at zero and is only set on `INFERENCE_DONE` or `END_OF_SPEECH`. The first `START_OF_SPEECH` will compute idle time from epoch. Initialize `#lastActivityTime` on stream construction to current time.
+
+- Metrics loop and cleanup
+  - The metrics reader loop runs until the output ends; ensure `close()` is called to break the loop. Consider cancelling the metrics reader explicitly on close.
+
+- Stream resource release
+  - `close()` cancels the output reader and closes the output writable, but the input reader and input writer may still hold locks in some paths. Review releasing all locks when closing.
+
+- Deprecated `pushFrame`
+  - Marked for removal; prefer `updateInputStream`.
+
+#### Where to find concrete VADs
+
+- Silero-based VAD: see `plugins/silero/src/vad.ts` for a concrete implementation that extends these base classes.
+
+
+
+
+
+### Silero VAD plugin
+
+This document explains `plugins/silero/src/vad.ts`: a concrete Voice Activity Detection implementation that extends the core `VAD` and `VADStream` in `@livekit/agents` using an ONNX model.
+
+- Class: `plugins/silero/src/vad.ts#VAD` (extends `baseVAD`)
+- Stream: `plugins/silero/src/vad.ts#VADStream` (extends `baseStream`)
+
+#### Purpose
+
+- Run lightweight, streaming VAD using a Silero ONNX model.
+- Work with arbitrary input sample rates, resampling to the model's rate (8kHz or 16kHz).
+- Emit timely VAD events for use in turn detection, TTS interruption, and STT segmentation.
+
+#### Options and defaults
+
+```ts
+export interface VADOptions {
+  minSpeechDuration: number;        // ms of speech before START_OF_SPEECH
+  minSilenceDuration: number;       // ms of silence to end speech
+  prefixPaddingDuration: number;    // ms of audio kept before detected start
+  maxBufferedSpeech: number;        // ms of buffered output speech cap
+  activationThreshold: number;      // probability threshold for speech
+  sampleRate: 8000 | 16000;         // model rate
+  forceCPU: boolean;                // use CPU even if GPU present
+}
+```
+
+Defaults (`defaultVADOptions`):
+- `minSpeechDuration: 50`
+- `minSilenceDuration: 550`
+- `prefixPaddingDuration: 500`
+- `maxBufferedSpeech: 60000`
+- `activationThreshold: 0.5`
+- `sampleRate: 16000`
+- `forceCPU: true`
+
+Update live via `VAD.updateOptions(partial)`; propagates to active streams.
+
+#### Loading and prewarming
+
+```ts
+const vad = await silero.VAD.load({ sampleRate: 16000 });
+proc.userData.vad = vad; // set during agent prewarm
+```
+
+- `load()` creates an ONNX runtime session (`newInferenceSession`) and returns a ready `VAD`.
+- Recommended to call in the agent `prewarm` phase.
+
+#### Streaming flow
+
+```mermaid
+sequenceDiagram
+  participant App as "AgentSession/AudioRecognition"
+  participant VAD as "silero.VAD"
+  participant Stream as "VADStream"
+  participant Model as "OnnxModel"
+
+  App->>VAD: "stream()"
+  VAD-->>App: "VADStream"
+  App->>Stream: "updateInputStream(audio frames)"
+  loop frames
+    Stream->>Model: "run(inference window)"
+    Model-->>Stream: "p (speech probability)"
+    alt p > activationThreshold
+      Stream-->>App: "START_OF_SPEECH (once)"
+    else
+      Stream-->>App: "END_OF_SPEECH (after minSilenceDuration)"
+    end
+    Stream-->>App: "INFERENCE_DONE (every window)"
+  end
+```
+
+#### Resampling and buffering
+
+- If input sample rate != model rate, an `AudioResampler` (QUICK quality) converts frames for inference.
+- A speech buffer stores resampled audio to return complete clips on `START_OF_SPEECH` and `END_OF_SPEECH`.
+- `prefixPaddingSamples` retains leading context before speech start.
+
+#### Event semantics
+
+- `INFERENCE_DONE`
+  - Emitted for each inference window; includes `probability`, `inferenceDuration`, and the window audio.
+- `START_OF_SPEECH`
+  - Emitted after `minSpeechDuration` of speech; includes prefixed buffered audio.
+- `END_OF_SPEECH`
+  - Emitted once silence exceeds `minSilenceDuration` after speaking.
+
+All events include: cumulative `speechDuration`/`silenceDuration`, `samplesIndex`, `timestamp`, `speaking` flag, and raw accumulators.
+
+#### Updating options at runtime
+
+- `VAD.updateOptions(partial)` updates defaults and calls `VADStream.updateOptions` for active streams.
+- `VADStream.updateOptions` recomputes buffer sizes and resets the max-reached flag if the buffer grows.
+
+#### Performance and backpressure
+
+- Each inference step measures `inferenceDuration` and accumulates `#extraInferenceTime` vs realtime window; warns if > 200 ms behind.
+- After each step, leftover data beyond the window is pushed back into frame buffers to avoid drift.
+
+#### Integration with core VAD
+
+- Extends the core `VAD`/`VADStream` interfaces in `@livekit/agents`, so it plugs into `AudioRecognition` and `AgentSession` without additional glue.
+- Emits events consumed by `AgentActivity` for turn detection and interruption.
+
+#### Known notes and issues
+
+- Mixed sample rates: If subsequent frames carry a different input sample rate, an error is logged and the frame is skipped.
+- Buffer overflow: When `maxBufferedSpeech` is exceeded, further data for the current speech is ignored until an end is detected; a warning is logged.
+- Activation hysteresis: Separate speech/silence threshold durations provide stability, but rapid toggling near threshold can still occur with noisy audio.
+
+#### Minimal example
+
+```ts
+const vad = await silero.VAD.load();
+const stream = vad.stream();
+stream.updateInputStream(audioStream);
+for await (const ev of stream) {
+  if (ev.type === VADEventType.START_OF_SPEECH) {
+    // handle start
+  }
+}
+```
+
+
+
+
+
+### Voice AgentSession architecture and usage
+
+This document covers `agents/src/voice/agent_session.ts`, the orchestrator for realtime voice interactions. It wires VAD, STT, LLM/RealtimeModel, TTS, turn detection, room I/O, and agent activity.
+
+#### Purpose
+
+- Manage the voice interaction lifecycle for an agent within a LiveKit `Room`.
+- Coordinate audio input/output, transcription, generation, and interruptions.
+- Emit rich events about user/agent state, messages, metrics, and errors.
+
+#### High-level architecture
+
+```mermaid
+graph TD
+  A["Room (audio/video)"] --> IO("RoomIO")
+  IO --> AR("AudioRecognition")
+  AR --> VAD["VAD"]
+  AR --> STT["STT"]
+  subgraph AgentSession
+    ACT("AgentActivity")
+    AGT("Agent (behaviors)")
+    LLM["LLM / RealtimeModel"]
+    TTS["TTS"]
+    IN("AgentInput")
+    OUT("AgentOutput")
+  end
+  VAD --> ACT
+  STT --> ACT
+  AGT --> ACT
+  ACT --> LLM
+  ACT --> TTS
+  OUT --> IO
+```
+
+#### Construction and options
+
+```ts
+new AgentSession({
+  vad, stt, llm, tts,
+  turnDetection,              // 'stt' | 'vad' | 'realtime_llm' | 'manual' | _TurnDetector
+  voiceOptions: {             // defaults shown
+    allowInterruptions: true,
+    discardAudioIfUninterruptible: true,
+    minInterruptionDuration: 500,
+    minInterruptionWords: 0,
+    minEndpointingDelay: 500,
+    maxEndpointingDelay: 6000,
+    maxToolSteps: 3,
+  },
+});
+```
+
+#### Lifecycle
+
+- `start({ agent, room, inputOptions?, outputOptions? })`
+  - Creates `RoomIO` and starts it.
+  - Initializes `AgentActivity` for the given `Agent` and wires audio input if present.
+  - Emits agent state changes: `initializing` → `listening`.
+- `updateAgent(agent)`
+  - Drains and replaces the current activity with a new one derived from the new agent.
+  - Ensures audio input is re-attached to the new activity.
+
+#### Core methods
+
+- `say(text | ReadableStream<string>, { audio?, allowInterruptions?, addToChatCtx? }) => SpeechHandle`
+  - Enqueue TTS playback (and optional pre-produced audio). Returns a `SpeechHandle` for interruption/cancellation.
+
+- `generateReply({ userInput?, instructions?, toolChoice?, allowInterruptions? }) => SpeechHandle`
+  - Initiate LLM generation; constructs a user `ChatMessage` if `userInput` provided. If the session is draining, delegates to the next activity.
+
+- `commitUserTurn()` / `clearUserTurn()`
+  - Manually mark or clear the end of the user's turn when using manual turn detection.
+
+#### Events
+
+See `agents/src/voice/events.ts` for event types. Notable events include:
+- `UserInputTranscribed`: streaming transcripts from STT.
+- `AgentStateChanged` and `UserStateChanged`: state transitions.
+- `ConversationItemAdded`: message added to chat context.
+- `FunctionToolsExecuted`: tool execution summary.
+- `MetricsCollected`: VAD or other metrics.
+- `SpeechCreated`: speech started/queued.
+- `Error`: error surfaced from subsystems.
+
+#### Turn detection modes
+
+- `'vad'`: driven by VAD `END_OF_SPEECH` and timing thresholds.
+- `'stt'`: driven by STT end-of-utterance plus word and duration thresholds.
+- `'realtime_llm'`: server-side turn detection by the realtime model (e.g., OpenAI Realtime).
+- `'manual'`: user code calls `commitUserTurn()`.
+- Custom `_TurnDetector`: pluggable algorithm via `AudioRecognition`.
+
+#### Typical flow
+
+```mermaid
+sequenceDiagram
+  participant Room
+  participant IO as RoomIO
+  participant Rec as AudioRecognition
+  participant VAD
+  participant STT
+  participant Act as AgentActivity
+  participant LLM
+  participant TTS
+
+  Room->>IO: subscribe audio
+  IO->>Rec: audio frames
+  Rec->>VAD: updateInputStream(audio)
+  Rec->>STT: stream(audio)
+  VAD-->>Act: start/end of speech, inference events
+  STT-->>Act: interim/final transcripts
+  Act->>LLM: generate (as needed)
+  LLM-->>Act: text chunks
+  Act->>TTS: synthesize
+  TTS-->>IO: publish audio
+```
+
+#### State accessors
+
+- `chatCtx`: returns a copy of the global `ChatContext`.
+- `agentState`: current agent state (`initializing`, `listening`, ...).
+- `currentAgent`: throws if not started; otherwise returns active `Agent`.
+- `input`/`output`: structured I/O handles for audio/text.
+
+#### Known behaviors and notes
+
+- Start idempotency: calling `start()` repeatedly is safe; subsequent calls no-op.
+- Activity replacement drains current activity before starting the next to avoid overlaps.
+- `say()` and `generateReply()` throw if session is not running.
+- When draining (during agent swap), `generateReply()` uses `nextActivity` to keep experience seamless.
+
+#### Known shortcomings and probable bugs
+
+- Start does not await activity initialization
+  - `start()` calls `updateActivity(this.agent)` without `await`. The session state is set to `listening` immediately, while `AgentActivity.start()` and audio wiring may still be in progress. Early `say()`/`generateReply()`/audio could race with initialization. Consider awaiting `updateActivity` or emitting an explicit "ready" event.
+
+- Missing lifecycle locking
+  - A TODO notes adding a lock around the activity lifecycle. Concurrent `updateAgent()` or rapid successive starts could interleave drains/starts and lead to transient undefined `activity` states or missed wiring.
+
+- Generate during drain edge case
+  - `generateReply()` routes to `nextActivity` when `this.activity.draining` is true; however, if draining is triggered without `nextActivity` set (e.g., external shutdown), it throws. Ensure callers handle this or guard the state.
+
+- No-op output change handlers
+  - `onAudioOutputChanged()` and `onTextOutputChanged()` are empty; if dynamic output routing is intended, this is a gap (not strictly a bug but a missing feature).
+
 
 
 
